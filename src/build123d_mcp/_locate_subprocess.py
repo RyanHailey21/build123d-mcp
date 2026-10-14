@@ -105,9 +105,10 @@ def _face_geometry_diagnostics(face) -> dict:
     from OCP.GProp import GProp_GProps
     from OCP.TopAbs import TopAbs_EDGE
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS
 
-    typed_face = TopoDS.Face_s(face)
+    from build123d_mcp._ocp_compat import to_edge, to_face
+
+    typed_face = to_face(face)
     details: dict = {
         "surface": str(BRepAdaptor_Surface(typed_face).GetType())
         .split(".")[-1]
@@ -139,7 +140,7 @@ def _face_geometry_diagnostics(face) -> dict:
     edge_index = -1
     while explorer.More():
         edge_index += 1
-        edge = TopoDS.Edge_s(explorer.Current())
+        edge = to_edge(explorer.Current())
         try:
             adaptor = BRepAdaptor_Curve(edge)
             props = GProp_GProps()
@@ -191,7 +192,8 @@ def _brep_invalid_faces(solid) -> list:
     from OCP.GProp import GProp_GProps
     from OCP.TopAbs import TopAbs_FACE
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS
+
+    from build123d_mcp._ocp_compat import to_face
 
     a = BRepCheck_Analyzer(solid)
     out = []
@@ -199,7 +201,7 @@ def _brep_invalid_faces(solid) -> list:
     idx = -1
     while e.More():
         idx += 1
-        f = TopoDS.Face_s(e.Current())
+        f = to_face(e.Current())
         if not a.IsValid(f):
             g = GProp_GProps()
             BRepGProp.SurfaceProperties_s(f, g)
@@ -234,14 +236,17 @@ def _brep_edge_defects(solid) -> list:
     from OCP.GProp import GProp_GProps
     from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE
     from OCP.TopExp import TopExp
-    from OCP.TopoDS import TopoDS
-    from OCP.TopTools import TopTools_IndexedDataMapOfShapeListOfShape
 
-    m = TopTools_IndexedDataMapOfShapeListOfShape()
+    from build123d_mcp._ocp_compat import (
+        IndexedDataMapOfShapeListOfShape,
+        to_edge,
+    )
+
+    m = IndexedDataMapOfShapeListOfShape()
     TopExp.MapShapesAndAncestors_s(solid, TopAbs_EDGE, TopAbs_FACE, m)
     out = []
     for i in range(1, m.Extent() + 1):
-        edge = TopoDS.Edge_s(m.FindKey(i))
+        edge = to_edge(m.FindKey(i))
         if BRep_Tool.Degenerated_s(edge):  # seam/pole edges aren't boundaries
             continue
         faces = m.FindFromIndex(i).Extent()
@@ -462,8 +467,11 @@ def _mesh_untriangulated_faces(shape, deadline: float | None = None) -> list:
     from OCP.TopAbs import TopAbs_FACE
     from OCP.TopExp import TopExp
     from OCP.TopLoc import TopLoc_Location
-    from OCP.TopoDS import TopoDS
-    from OCP.TopTools import TopTools_IndexedMapOfShape
+
+    from build123d_mcp._ocp_compat import (
+        IndexedMapOfShape,
+        to_face,
+    )
 
     occ = shape.wrapped
     bb = shape.bounding_box()
@@ -475,11 +483,11 @@ def _mesh_untriangulated_faces(shape, deadline: float | None = None) -> list:
     BRepTools.Clean_s(occ)
     BRepMesh_IncrementalMesh(occ, deflection, False, 0.5, True)
 
-    faces = TopTools_IndexedMapOfShape()
+    faces = IndexedMapOfShape()
     TopExp.MapShapes_s(occ, TopAbs_FACE, faces)
     out = []
     for fi in range(1, faces.Size() + 1):
-        face = TopoDS.Face_s(faces.FindKey(fi))
+        face = to_face(faces.FindKey(fi))
         if BRep_Tool.Triangulation_s(face, TopLoc_Location()) is not None:
             continue
         props = GProp_GProps()
@@ -516,9 +524,11 @@ def _mesh_refined_untriangulated_faces(shape, deadline: float | None = None) -> 
     from OCP.TopAbs import TopAbs_FACE
     from OCP.TopExp import TopExp
     from OCP.TopLoc import TopLoc_Location
-    from OCP.TopoDS import TopoDS
-    from OCP.TopTools import TopTools_IndexedMapOfShape
 
+    from build123d_mcp._ocp_compat import (
+        IndexedMapOfShape,
+        to_face,
+    )
     from build123d_mcp.tools.validate import (
         _REFINED_UNTRIANGULATED_FACTOR,
         _REFINED_UNTRIANGULATED_MAX_TRIS,
@@ -540,12 +550,12 @@ def _mesh_refined_untriangulated_faces(shape, deadline: float | None = None) -> 
     BRepTools.Clean_s(occ)
     BRepMesh_IncrementalMesh(occ, base_deflection, False, 0.5, True)
 
-    faces = TopTools_IndexedMapOfShape()
+    faces = IndexedMapOfShape()
     TopExp.MapShapes_s(occ, TopAbs_FACE, faces)
     base_triangulated: set[int] = set()
     base_tris = 0
     for fi in range(1, faces.Size() + 1):
-        face = TopoDS.Face_s(faces.FindKey(fi))
+        face = to_face(faces.FindKey(fi))
         loc = TopLoc_Location()
         tri = BRep_Tool.Triangulation_s(face, loc)
         if tri is None:
@@ -566,7 +576,7 @@ def _mesh_refined_untriangulated_faces(shape, deadline: float | None = None) -> 
     out = []
     n_tris = 0
     for fi in range(1, faces.Size() + 1):
-        face = TopoDS.Face_s(faces.FindKey(fi))
+        face = to_face(faces.FindKey(fi))
         loc = TopLoc_Location()
         tri = BRep_Tool.Triangulation_s(face, loc)
         if tri is not None:

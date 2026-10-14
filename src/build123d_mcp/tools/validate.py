@@ -225,11 +225,12 @@ def _edge_face_adjacency(occ, fmap, emap):
 
     from OCP.TopAbs import TopAbs_EDGE
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS
+
+    from build123d_mcp._ocp_compat import to_face
 
     adj: dict = defaultdict(list)
     for fi in range(1, fmap.Size() + 1):
-        f = TopoDS.Face_s(fmap.FindKey(fi))
+        f = to_face(fmap.FindKey(fi))
         exp = TopExp_Explorer(f, TopAbs_EDGE)
         while exp.More():
             adj[emap.FindIndex(exp.Current())].append(fi)
@@ -628,14 +629,17 @@ def _edge_defects(shape) -> tuple[int, int, bool]:
         from OCP.BRep import BRep_Tool
         from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE
         from OCP.TopExp import TopExp
-        from OCP.TopoDS import TopoDS
-        from OCP.TopTools import TopTools_IndexedDataMapOfShapeListOfShape
 
-        m = TopTools_IndexedDataMapOfShapeListOfShape()
+        from build123d_mcp._ocp_compat import (
+            IndexedDataMapOfShapeListOfShape,
+            to_edge,
+        )
+
+        m = IndexedDataMapOfShapeListOfShape()
         TopExp.MapShapesAndAncestors_s(shape.wrapped, TopAbs_EDGE, TopAbs_FACE, m)
         open_edges = nonmanifold_edges = 0
         for i in range(1, m.Extent() + 1):
-            edge = TopoDS.Edge_s(m.FindKey(i))
+            edge = to_edge(m.FindKey(i))
             if BRep_Tool.Degenerated_s(edge):  # seam/pole edges are not boundaries
                 continue
             faces = m.FindFromIndex(i).Extent()
@@ -800,8 +804,13 @@ def _mesh_defects_exact(
         from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_REVERSED, TopAbs_VERTEX
         from OCP.TopExp import TopExp, TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
-        from OCP.TopoDS import TopoDS
-        from OCP.TopTools import TopTools_IndexedMapOfShape
+
+        from build123d_mcp._ocp_compat import (
+            IndexedMapOfShape,
+            to_edge,
+            to_face,
+            to_vertex,
+        )
 
         bb = shape.bounding_box()
         diag = math.dist((bb.min.X, bb.min.Y, bb.min.Z), (bb.max.X, bb.max.Y, bb.max.Z))
@@ -832,14 +841,14 @@ def _mesh_defects_exact(
             if time.monotonic() > _open_deadline:
                 return -1, 0, {}
             BRepMesh_IncrementalMesh(occ, defl, False, 0.5, True)
-            fmap = TopTools_IndexedMapOfShape()
+            fmap = IndexedMapOfShape()
             TopExp.MapShapes_s(occ, TopAbs_FACE, fmap)
             V: list = []
             T: list = []
             fbase: dict = {}
             ftri: dict = {}
             for fi in range(1, fmap.Size() + 1):
-                f = TopoDS.Face_s(fmap.FindKey(fi))
+                f = to_face(fmap.FindKey(fi))
                 loc = TopLoc_Location()
                 tri = BRep_Tool.Triangulation_s(f, loc)
                 if tri is None:
@@ -906,16 +915,16 @@ def _mesh_defects_exact(
             # call dominates the pass, so extract each polygon ONCE here and reuse
             # its endpoints for the vertex merge below rather than re-walking every
             # edge a second time.
-            emap = TopTools_IndexedMapOfShape()
+            emap = IndexedMapOfShape()
             TopExp.MapShapes_s(occ, TopAbs_EDGE, emap)
             eadj = _edge_face_adjacency(occ, fmap, emap)
-            vm = TopTools_IndexedMapOfShape()
+            vm = IndexedMapOfShape()
             TopExp.MapShapes_s(occ, TopAbs_VERTEX, vm)
             vnodes: dict = defaultdict(list)
             for ei in range(1, emap.Size() + 1):
                 if time.monotonic() > _open_deadline:
                     return -1, len(T), {}  # stitch over budget — undetermined
-                edge = TopoDS.Edge_s(emap.FindKey(ei))
+                edge = to_edge(emap.FindKey(ei))
                 nls = []
                 for fi in eadj.get(ei, ()):
                     if fi not in ftri:
@@ -939,11 +948,11 @@ def _mesh_defects_exact(
                             vnodes[vl].append(int(arr[-1]))
             # (b) periodic SEAM edges (edge appears twice on the same face)
             for fi, (tri, loc, f) in ftri.items():
-                smap = TopTools_IndexedMapOfShape()
+                smap = IndexedMapOfShape()
                 polys: dict = defaultdict(list)
                 exp = TopExp_Explorer(f, TopAbs_EDGE)
                 while exp.More():
-                    e = TopoDS.Edge_s(exp.Current())
+                    e = to_edge(exp.Current())
                     if BRepTools.IsReallyClosed_s(e, f):
                         idx = smap.Add(e)
                         poly = BRep_Tool.PolygonOnTriangulation_s(e, tri, loc)
@@ -981,7 +990,7 @@ def _mesh_defects_exact(
             for vi, ns in vnodes.items():
                 if time.monotonic() > _open_deadline:
                     return -1, len(T), pass_vdefl  # stitch over budget — undetermined
-                vp = BRep_Tool.Pnt_s(TopoDS.Vertex_s(vm.FindKey(vi)))
+                vp = BRep_Tool.Pnt_s(to_vertex(vm.FindKey(vi)))
                 vertex_xyz = np.array([vp.X(), vp.Y(), vp.Z()], dtype=np.float64)
                 worst = float(np.abs(Va[ns] - vertex_xyz).max())
                 if worst > defl:
@@ -1077,14 +1086,14 @@ def _mesh_defects_exact(
             BRepMesh_IncrementalMesh(occ, refined_deflection, False, 0.5, True)
             if time.monotonic() > _open_deadline:
                 return 0, False
-            fmap = TopTools_IndexedMapOfShape()
+            fmap = IndexedMapOfShape()
             TopExp.MapShapes_s(occ, TopAbs_FACE, fmap)
             missing = 0
             n_tris = 0
             for fi in range(1, fmap.Size() + 1):
                 if time.monotonic() > _open_deadline:
                     return missing, False
-                face = TopoDS.Face_s(fmap.FindKey(fi))
+                face = to_face(fmap.FindKey(fi))
                 loc = TopLoc_Location()
                 tri = BRep_Tool.Triangulation_s(face, loc)
                 if tri is None:
@@ -1137,7 +1146,7 @@ def _mesh_defects_exact(
             return MeshGateResult.unchecked()
         BRepMesh_IncrementalMesh(occ, deflection, False, 0.5, True)
 
-        faces = TopTools_IndexedMapOfShape()
+        faces = IndexedMapOfShape()
         TopExp.MapShapes_s(occ, TopAbs_FACE, faces)
         if faces.Size() == 0:
             return MeshGateResult.unchecked()
@@ -1150,7 +1159,7 @@ def _mesh_defects_exact(
         face_tri: dict = {}
         untriangulated = 0
         for fi in range(1, faces.Size() + 1):
-            face = TopoDS.Face_s(faces.FindKey(fi))
+            face = to_face(faces.FindKey(fi))
             loc = TopLoc_Location()
             tri = BRep_Tool.Triangulation_s(face, loc)
             if tri is None:
@@ -1226,9 +1235,9 @@ def _mesh_defects_exact(
             nmv = _nonmanifold_vertex_count(_wmf)
         except Exception:
             nmv = 0
-        vmap = TopTools_IndexedMapOfShape()
+        vmap = IndexedMapOfShape()
         TopExp.MapShapes_s(occ, TopAbs_VERTEX, vmap)
-        emap = TopTools_IndexedMapOfShape()
+        emap = IndexedMapOfShape()
         TopExp.MapShapes_s(occ, TopAbs_EDGE, emap)
         edge_adj = _edge_face_adjacency(occ, faces, emap)
 
@@ -1242,7 +1251,7 @@ def _mesh_defects_exact(
                 # check rather than approach the worker op-timeout. Bounds total
                 # gate wall-clock to ~the budget.
                 return MeshGateResult.unchecked()
-            edge = TopoDS.Edge_s(emap.FindKey(ei))
+            edge = to_edge(emap.FindKey(ei))
             node_lists = []
             for fi in edge_adj.get(ei, ()):
                 if fi not in face_tri:
@@ -1291,7 +1300,7 @@ def _mesh_defects_exact(
         # REPORT the defect, not repair it.
         vertex_defl_coords: _VertexDeflectionEvidence = {}
         for vi, nodes in vertex_nodes.items():
-            vp = BRep_Tool.Pnt_s(TopoDS.Vertex_s(vmap.FindKey(vi)))
+            vp = BRep_Tool.Pnt_s(to_vertex(vmap.FindKey(vi)))
             vertex_xyz = np.array([vp.X(), vp.Y(), vp.Z()], dtype=np.float64)
             worst = float(np.abs(verts[nodes] - vertex_xyz).max())
             if worst > deflection:

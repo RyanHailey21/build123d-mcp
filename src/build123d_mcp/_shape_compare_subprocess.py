@@ -157,13 +157,14 @@ def _chunk_displacement(chunk: Any, ref_solid: Any) -> float:
     from OCP.BRepExtrema import BRepExtrema_DistShapeShape
     from OCP.TopAbs import TopAbs_VERTEX
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS
+
+    from build123d_mcp._ocp_compat import to_vertex
 
     e = TopExp_Explorer(chunk, TopAbs_VERTEX)
     seen: set = set()
     mx = 0.0
     while e.More():
-        v = TopoDS.Vertex_s(e.Current())
+        v = to_vertex(e.Current())
         p = BRep_Tool.Pnt_s(v)
         key = (round(p.X(), 3), round(p.Y(), 3), round(p.Z(), 3))
         if key not in seen:

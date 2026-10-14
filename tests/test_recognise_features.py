@@ -137,13 +137,12 @@ def test_invalid_solid_gets_repair_guidance_not_opaque_recogniser_error():
         """
 from build123d import *
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeSolid
-from OCP.TopoDS import TopoDS
 with BuildPart() as bp:
     Box(60, 40, 10)
     with Locations((20, 0, 5)):
         Hole(4)
 open_shell = Shell(bp.part.faces()[1:])
-bad = Solid(BRepBuilderAPI_MakeSolid(TopoDS.Shell_s(open_shell.wrapped)).Solid())
+bad = Solid(BRepBuilderAPI_MakeSolid(open_shell.wrapped).Solid())
 show(bad, 'bad')
 """
     )
