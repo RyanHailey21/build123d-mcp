@@ -54,6 +54,6 @@ def test_compat_names_work_on_the_installed_ocp():
     assert seq.Length() == 1
 
     assert _ocp_compat.to_vertex(box.vertices()[0].wrapped).ShapeType() == TopAbs_VERTEX
-    assert _ocp_compat.to_solid(box.wrapped) is not None
+    assert _ocp_compat.to_solid(box.solids()[0].wrapped) is not None
     assert _ocp_compat.to_wire(box.faces()[0].outer_wire().wrapped) is not None
     assert _ocp_compat.to_shell(box.shells()[0].wrapped) is not None
