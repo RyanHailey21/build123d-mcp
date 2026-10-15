@@ -507,6 +507,15 @@ def test_ocp_gp_module_allowed(session):
     assert "Error" not in result
 
 
+def test_ocp_collections_module_allowed(session):
+    """OCP 8 moved the collection types (Array1_gp_Pnt, ...) to OCP.collections (#488).
+
+    On OCP 7 the module does not exist, so the import fails as missing, never as blocked.
+    """
+    result = execute_code(session, "import OCP.collections")
+    assert "not allowed" not in result.lower() and "blocked" not in result.lower()
+
+
 def test_ocp_step_control_blocked(session):
     result = execute_code(session, "from OCP.STEPControl import STEPControl_Reader")
     assert "not allowed" in result.lower() or "blocked" in result.lower()

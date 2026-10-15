@@ -144,7 +144,9 @@ OCP_ALLOWLIST = frozenset(
         "OCP.ShapeExtend",
         "OCP.ShapeFix",
         "OCP.ShapeUpgrade",
-        # Collection types
+        # Collection types (OCP 8 / build123d 0.13 moved the NCollection
+        # instantiations, e.g. Array1_gp_Pnt and IndexedMap_TopoDS_Shape, here)
+        "OCP.collections",
         "OCP.TColgp",
         "OCP.TColGeom",
         "OCP.TColStd",
