@@ -23,9 +23,9 @@ classifiers = [
 dependencies = [
     "mcp>=2,<3",
     # build123d is pre-1.0 and 0.x minor bumps may break the API.
-    # We test against both 0.10 and 0.11 (CI matrix), so the range spans both.
-    # bump deliberately.
-    "build123d>=0.10,<0.12",
+    # CI tests 0.10, 0.11 and 0.13 (0.13 runs on OCP 8; 0.12 shares 0.11's
+    # OCP 7.9 stack). Bump deliberately.
+    "build123d>=0.10,<0.14",
     # 0.11 switched build123d's OCP dependency to cadquery-ocp-novtk, which no
     # longer pulls VTK transitively. render.py drives VTK directly, so VTK must
     # be declared explicitly. Harmless on 0.10 (cadquery-ocp already provides it).
@@ -41,9 +41,9 @@ dependencies = [
     # Import name remains `build123d_drafting` (install name ≠ import name).
     "build123d-drafting-helpers>=0.10.0",
     # Shared geometry-only feature inventory and exact run-local face evidence.
-    "quiddity>=0.3.5,<0.4",
+    "quiddity>=0.3.11,<0.4",
     "defusedxml>=0.7.1",
-    "augura>=0.1.6",
+    "augura>=0.1.8",
     "scipy",
     "pillow",
 ]

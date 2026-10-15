@@ -316,10 +316,12 @@ def _solid_from_occt(shape):
     """Reject mixed defeaturing results instead of silently taking one solid."""
     from build123d import Solid
     from OCP.TopAbs import TopAbs_COMPOUND, TopAbs_SOLID
-    from OCP.TopoDS import TopoDS, TopoDS_Iterator
+    from OCP.TopoDS import TopoDS_Iterator
+
+    from build123d_mcp._ocp_compat import to_solid
 
     if shape.ShapeType() == TopAbs_SOLID:
-        return Solid(TopoDS.Solid_s(shape))
+        return Solid(to_solid(shape))
     if shape.ShapeType() != TopAbs_COMPOUND:
         raise ValueError("defeaturing did not produce a solid")
     solids = []
@@ -329,7 +331,7 @@ def _solid_from_occt(shape):
         while iterator.More():
             child = iterator.Value()
             if child.ShapeType() == TopAbs_SOLID:
-                solids.append(Solid(TopoDS.Solid_s(child)))
+                solids.append(Solid(to_solid(child)))
             elif child.ShapeType() == TopAbs_COMPOUND:
                 stack.append(child)
             else:

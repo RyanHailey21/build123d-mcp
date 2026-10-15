@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.3.91
+
+### Changed
+
+- **Supports build123d 0.12 and 0.13 (#488).** The range is now
+  `build123d>=0.10,<0.14`, and CI tests build123d 0.13 (OCP 8) on Linux,
+  macOS and Windows. This needs quiddity 0.3.11 and augura 0.1.8, which add
+  OCP 8 support, so those are the new minimums.
+- **OCP 7/8 compatibility shim (#488).** OCP 8 (build123d 0.13+) removed the
+  `TopoDS.*_s` downcasts and moved `TopTools_IndexedMapOfShape`,
+  `TopTools_IndexedDataMapOfShapeListOfShape` and `TopTools_HSequenceOfShape` to
+  `OCP.collections`. `measure`, `validate`, `edit_features` and the locate,
+  tessellate and shape-compare subprocesses now import them through
+  `build123d_mcp._ocp_compat`, which prefers the OCP 7 names. The packaged
+  repair and modeling skill recipes use build123d-level casts instead, and a
+  guard test keeps the removed names out of `src` (code and skill files).
+- **`recognise_features()` copes with newer quiddity (#488).** quiddity 0.3.6+
+  degrades locally on an invalid solid instead of raising, so an invalid shape
+  now still gets the repair guidance: an error when nothing was proven, a
+  `warning` alongside features proven on its sound regions. Any `*_patterns` /
+  `*_refusals` result field (e.g. 0.3.8's `circular_face_patterns`) is treated
+  as a read-only aggregate rather than offered as a targetable family, and the
+  summary's `targetable` counts only families that can actually be targeted.
+  Shape validity is checked once per recognition run instead of on every call.
+- **Sandbox allows `OCP.collections`.** OCP 8 (build123d 0.13) moved the
+  collection types user code builds (`Array1_gp_Pnt`, `IndexedMap_TopoDS_Shape`,
+  ...) there from `OCP.TColgp` / `OCP.TopTools`, which stay allowed for OCP 7.
+- **`build123d://drafting` lists public constants.** The API reference now has
+  a Constants section (e.g. `DEFAULT_FONT_PATH` in drafting-helpers 0.15+)
+  instead of silently dropping non-callables. Path constants show only the
+  bundled file's name, never the server's install path.
+
 ## v0.3.90
 
 ### Changed

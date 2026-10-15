@@ -137,13 +137,12 @@ def test_invalid_solid_gets_repair_guidance_not_opaque_recogniser_error():
         """
 from build123d import *
 from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeSolid
-from OCP.TopoDS import TopoDS
 with BuildPart() as bp:
     Box(60, 40, 10)
     with Locations((20, 0, 5)):
         Hole(4)
 open_shell = Shell(bp.part.faces()[1:])
-bad = Solid(BRepBuilderAPI_MakeSolid(TopoDS.Shell_s(open_shell.wrapped)).Solid())
+bad = Solid(BRepBuilderAPI_MakeSolid(open_shell.wrapped).Solid())
 show(bad, 'bad')
 """
     )
@@ -193,3 +192,36 @@ show(bp.part, 'grid')
     assert patterns
     assert all("holes" not in rec and rec["holes_count"] >= 2 for rec in patterns)
     assert len(json.dumps(report)) < 20_000
+
+
+def test_targetable_counts_only_families_the_caller_can_target(featured_session):
+    summary = json.loads(recognise_features(featured_session, "plate"))
+    assert summary["targetable"] == {"holes": 4}  # hole_patterns stays read-only
+
+
+def test_validity_is_checked_once_per_run_not_per_call(featured_session, monkeypatch):
+    from build123d import Shape
+
+    calls = []
+    original = Shape.is_valid
+
+    def counting(self):
+        calls.append(1)
+        return original.fget(self)
+
+    monkeypatch.setattr(Shape, "is_valid", property(counting))
+    recognise_features(featured_session, "plate")
+    after_first_run = len(calls)  # includes quiddity's own validity checks
+    recognise_features(featured_session, "plate", families="holes")
+    recognise_features(featured_session, "plate", families="holes", max_features=1)
+    assert len(calls) == after_first_run  # cached calls never re-run BRepCheck
+
+
+def test_features_proven_on_an_invalid_solid_carry_a_warning(featured_session):
+    json.loads(recognise_features(featured_session, "plate"))
+    (run,) = featured_session._recognition_runs.values()
+    run["source_valid"] = False  # as for local degradation on an invalid import
+    report = json.loads(recognise_features(featured_session, "plate", families="holes"))
+    assert report["matched"] == 4
+    assert "fails the B-rep validity check" in report["warning"]
+    assert "build123d://skill/repair" in report["warning"]

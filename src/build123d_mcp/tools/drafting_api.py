@@ -7,7 +7,12 @@ hand-maintained signature list to drift when drafting-helpers releases.
 """
 
 import inspect
+import os
+from collections.abc import Mapping
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
+
+_MAX_CONSTANT_REPR = 400
 
 
 def _first_doc_line(obj: Any) -> str:
@@ -42,6 +47,25 @@ def _class_entry(name: str, cls: type) -> list[str]:
     return lines
 
 
+def _constant_value(obj: Any) -> str:
+    """Render a public constant: whole when short, never the server's install path."""
+    if isinstance(obj, (str, os.PathLike)):
+        # e.g. DEFAULT_FONT_PATH: the absolute path is host-specific (and private to
+        # the server), so show only the bundled file's name. Check both path styles:
+        # os.path.isabs("/srv/x") is False on Windows.
+        text = os.fspath(obj)
+        for flavour in (PurePosixPath, PureWindowsPath):
+            path = flavour(text)
+            if path.is_absolute():
+                return f"<path to bundled file {path.name!r}>"
+    if isinstance(obj, Mapping):
+        obj = dict(obj)  # mappingproxy etc. read better as a plain dict
+    value = repr(obj)
+    if len(value) <= _MAX_CONSTANT_REPR:
+        return value
+    return f"<{type(obj).__name__}: {value[: _MAX_CONSTANT_REPR - 20]}...>"
+
+
 def drafting_api(session: Any) -> str:
     """Build the API reference text from the installed build123d_drafting.
 
@@ -56,6 +80,7 @@ def drafting_api(session: Any) -> str:
     version = getattr(bd, "__version__", "unknown")
     classes: list[str] = []
     functions: list[str] = []
+    constants: list[str] = []
     for name in getattr(bd, "__all__", sorted(dir(bd))):
         obj = getattr(bd, name, None)
         if obj is None or inspect.ismodule(obj):
@@ -69,6 +94,8 @@ def drafting_api(session: Any) -> str:
             if doc:
                 functions.append(f"    {doc}")
             functions.append("")
+        else:
+            constants.append(f"{name} = {_constant_value(obj)}")
 
     header = [
         f"build123d-drafting-helpers API reference (installed version: {version})",
@@ -78,4 +105,7 @@ def drafting_api(session: Any) -> str:
         "=== Classes ===",
         "",
     ]
-    return "\n".join(header + classes + ["=== Functions ===", ""] + functions).rstrip() + "\n"
+    sections = header + classes + ["=== Functions ===", ""] + functions
+    if constants:
+        sections += ["=== Constants ===", "", *constants]
+    return "\n".join(sections).rstrip() + "\n"

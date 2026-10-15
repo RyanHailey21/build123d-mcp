@@ -89,13 +89,14 @@ def _face_inventory(shape) -> list:
     from OCP.GProp import GProp_GProps
     from OCP.TopAbs import TopAbs_FACE
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS
+
+    from build123d_mcp._ocp_compat import to_face
 
     surface_names = _get_surface_names()
     explorer = TopExp_Explorer(shape.wrapped, TopAbs_FACE)
     faces = []
     while explorer.More():
-        face = TopoDS.Face_s(explorer.Current())
+        face = to_face(explorer.Current())
         adaptor = BRepAdaptor_Surface(face)
         stype = adaptor.GetType()
         type_name = surface_names.get(stype, f"Other({stype})")
@@ -231,11 +232,12 @@ def _section_area(plane, wires) -> tuple[float, bool]:
     from OCP.GProp import GProp_GProps
     from OCP.TopAbs import TopAbs_IN, TopAbs_VERTEX
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopoDS import TopoDS
+
+    from build123d_mcp._ocp_compat import to_vertex, to_wire
 
     loops = []
     for j in range(1, wires.Length() + 1):
-        wire = TopoDS.Wire_s(wires.Value(j))
+        wire = to_wire(wires.Value(j))
         try:
             face_maker = BRepBuilderAPI_MakeFace(plane, wire)
             if not face_maker.IsDone():
@@ -251,7 +253,7 @@ def _section_area(plane, wires) -> tuple[float, bool]:
             vertices = TopExp_Explorer(wire, TopAbs_VERTEX)
             if not vertices.More():
                 continue
-            point = BRep_Tool.Pnt_s(TopoDS.Vertex_s(vertices.Current()))
+            point = BRep_Tool.Pnt_s(to_vertex(vertices.Current()))
             box = Bnd_Box()
             BRepBndLib.Add_s(face, box, False)
             loops.append((area, face, point, box))
@@ -296,7 +298,8 @@ def _cross_sections(shape, axis: str = "Z", num_slices: int = 10) -> list:
     from OCP.ShapeAnalysis import ShapeAnalysis_FreeBounds
     from OCP.TopAbs import TopAbs_EDGE
     from OCP.TopExp import TopExp_Explorer
-    from OCP.TopTools import TopTools_HSequenceOfShape
+
+    from build123d_mcp._ocp_compat import HSequenceOfShape
 
     axis = axis.upper()
     bb = shape.bounding_box()
@@ -328,13 +331,13 @@ def _cross_sections(shape, axis: str = "Z", num_slices: int = 10) -> list:
         section = BRepAlgoAPI_Section(shape.wrapped, plane, False)
         section.Build()
 
-        edges = TopTools_HSequenceOfShape()
+        edges = HSequenceOfShape()
         exp = TopExp_Explorer(section.Shape(), TopAbs_EDGE)
         while exp.More():
             edges.Append(exp.Current())
             exp.Next()
 
-        wires = TopTools_HSequenceOfShape()
+        wires = HSequenceOfShape()
         ShapeAnalysis_FreeBounds.ConnectEdgesToWires_s(edges, 1e-7, False, wires)
 
         area, resolved = _section_area(plane, wires)

@@ -24,20 +24,23 @@ def tessellate_shape_faces(shape, lin: float, ang: float) -> tuple[list, list, l
     from OCP.TopAbs import TopAbs_FACE, TopAbs_REVERSED
     from OCP.TopExp import TopExp
     from OCP.TopLoc import TopLoc_Location
-    from OCP.TopoDS import TopoDS
-    from OCP.TopTools import TopTools_IndexedMapOfShape
+
+    from build123d_mcp._ocp_compat import (
+        IndexedMapOfShape,
+        to_face,
+    )
 
     # Shape.mesh() preserves an existing imported mesh and only invokes OCC's
     # remesher when the shape does not already have usable triangulation.
     shape.mesh(lin, ang)
-    faces = TopTools_IndexedMapOfShape()
+    faces = IndexedMapOfShape()
     TopExp.MapShapes_s(shape.wrapped, TopAbs_FACE, faces)
 
     vertices: list = []
     triangles: list = []
     missing_faces: list[int] = []
     for fi in range(1, faces.Size() + 1):
-        face = TopoDS.Face_s(faces.FindKey(fi))
+        face = to_face(faces.FindKey(fi))
         loc = TopLoc_Location()
         tri = BRep_Tool.Triangulation_s(face, loc)
         if tri is None or tri.NbTriangles() == 0:

@@ -5,11 +5,18 @@ from build123d_mcp.tools.drafting_api import drafting_api
 
 def test_reference_covers_the_public_api():
     """Every __all__ symbol of the installed library appears with a signature."""
+    import inspect
+
     import build123d_drafting as bd
 
     ref = drafting_api(None)
     for name in bd.__all__:
-        assert f"{name}(" in ref, f"public symbol '{name}' missing from the reference"
+        obj = getattr(bd, name)
+        if inspect.ismodule(obj):
+            continue
+        # Callables are listed with their signature; constants (e.g. DEFAULT_FONT_PATH) by value.
+        expected = f"{name}(" if callable(obj) else f"{name} = "
+        assert expected in ref, f"public symbol '{name}' missing from the reference"
 
 
 def test_reference_carries_signatures_not_just_names():
@@ -28,3 +35,24 @@ def test_resource_uses_worker_routing():
 
     src = inspect.getsource(server.build123d_drafting_api)
     assert "_resolve_session().drafting_api()" in src
+
+
+def test_constants_are_listed_without_host_paths(monkeypatch):
+    import sys
+    import types
+
+    fake = types.ModuleType("build123d_drafting")
+    fake.__version__ = "9.9"
+    fake.FONT = "/srv/venv/site-packages/build123d_drafting/fonts/Sans.ttf"
+    fake.WIN_FONT = "C:\\venv\\Lib\\site-packages\\build123d_drafting\\fonts\\Mono.ttf"
+    fake.LIMITS = types.MappingProxyType({"title": 30, "sheet": 4})
+    fake.HUGE = list(range(1000))
+    fake.__all__ = ["FONT", "WIN_FONT", "LIMITS", "HUGE"]
+    monkeypatch.setitem(sys.modules, "build123d_drafting", fake)
+
+    ref = drafting_api(None)
+    assert "FONT = <path to bundled file 'Sans.ttf'>" in ref
+    assert "WIN_FONT = <path to bundled file 'Mono.ttf'>" in ref
+    assert "/srv/venv" not in ref and "site-packages" not in ref
+    assert "LIMITS = {'title': 30, 'sheet': 4}" in ref
+    assert "HUGE = <list: [0, 1, 2" in ref and "999" not in ref

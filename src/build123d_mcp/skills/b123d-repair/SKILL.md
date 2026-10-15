@@ -108,17 +108,18 @@ built with build123d's own operators (even a plain `Box()`), not just imported
 STEP files. Define this once and reuse it for every rung:
 
 ```python
+from build123d.topology.shape_core import downcast  # OCP 7 and 8 alike
 from OCP.TopAbs import TopAbs_SOLID, TopAbs_SHELL, TopAbs_COMPOUND
-from OCP.TopoDS import TopoDS, TopoDS_Iterator
+from OCP.TopoDS import TopoDS_Iterator
 from OCP.ShapeFix import ShapeFix_Solid
 
 def as_solid(shape):
     """Wrap a raw TopoDS_Shape (Solid, Compound, or sewn Shell) with a correct volume."""
     st = shape.ShapeType()
     if st == TopAbs_SOLID:
-        return Solid(TopoDS.Solid_s(shape))
+        return Solid(downcast(shape))
     if st == TopAbs_SHELL:
-        return Solid(ShapeFix_Solid().SolidFromShell(TopoDS.Shell_s(shape)))
+        return Solid(ShapeFix_Solid().SolidFromShell(downcast(shape)))
     if st != TopAbs_COMPOUND:
         raise RuntimeError(f"no solid or shell found in shape of type {st}")
 
@@ -133,11 +134,11 @@ def as_solid(shape):
             child = it.Value()
             cst = child.ShapeType()
             if cst == TopAbs_SOLID:
-                solids.append(TopoDS.Solid_s(child))
+                solids.append(downcast(child))
             elif cst == TopAbs_COMPOUND:
                 stack.append(child)
             elif cst == TopAbs_SHELL:
-                shells.append(TopoDS.Shell_s(child))
+                shells.append(downcast(child))
             else:
                 mixed = True
             it.Next()
