@@ -4,14 +4,16 @@
 
 ### Changed
 
-- **OCP 7/8 compatibility shim (#488).** OCP 8 (build123d 0.12+) removed the
+- **OCP 7/8 compatibility shim (#488).** OCP 8 (build123d 0.13+) removed the
   `TopoDS.*_s` downcasts and moved `TopTools_IndexedMapOfShape`,
   `TopTools_IndexedDataMapOfShapeListOfShape` and `TopTools_HSequenceOfShape` to
   `OCP.collections`. `measure`, `validate`, `edit_features` and the locate,
   tessellate and shape-compare subprocesses now import them through
-  `build123d_mcp._ocp_compat`, which prefers the OCP 7 names, and a guard test
-  keeps the removed names out of `src`. The supported build123d range is
-  unchanged until a quiddity release with OCP 8 support is out.
+  `build123d_mcp._ocp_compat`, which prefers the OCP 7 names. The packaged
+  repair and modeling skill recipes use build123d-level casts instead, and a
+  guard test keeps the removed names out of `src` (code and skill files). The
+  supported build123d range is unchanged until a quiddity release with OCP 8
+  support is out.
 
 ## v0.3.90
 

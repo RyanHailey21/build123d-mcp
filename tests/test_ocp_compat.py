@@ -1,8 +1,9 @@
 """OCP 7.x / 8.x compatibility (#488).
 
-OCP 8 dropped the ``TopoDS.*_s`` downcasts and moved the ``TopTools_*`` NCollection
-instantiations to ``OCP.collections``. Server code must go through
-``build123d_mcp._ocp_compat`` so it runs on both.
+OCP 8 (build123d 0.13+) dropped the ``TopoDS.*_s`` downcasts and moved the NCollection
+instantiations (``TopTools_*Of*``, ``TColgp_*``, most ``TColStd_*``) to ``OCP.collections``.
+Server code must go through ``build123d_mcp._ocp_compat``, and the packaged skill recipes
+(which run in the sandbox) use build123d's own ``downcast``, so both run on either OCP.
 """
 
 import re
@@ -16,16 +17,16 @@ SRC = Path(__file__).resolve().parent.parent / "src" / "build123d_mcp"
 
 REMOVED_IN_OCP8 = re.compile(
     r"\bTopoDS\.\w+_s\b"
-    r"|\bTopTools_IndexedMapOfShape\b"
-    r"|\bTopTools_IndexedDataMapOfShapeListOfShape\b"
-    r"|\bTopTools_HSequenceOfShape\b"
+    r"|\bTopTools_\w*(Of|Map|Sequence|List)\w*\b"
+    r"|\bTColgp_\w+"
+    r"|\bTColStd_(?!H?PackedMap)\w+"
 )
 
 
 def test_no_ocp7_only_names_outside_the_compat_module():
     offenders = [
         f"{path.relative_to(SRC)}:{lineno}: {line.strip()}"
-        for path in SRC.rglob("*.py")
+        for path in (*SRC.rglob("*.py"), *SRC.rglob("*.md"))
         if path.name != "_ocp_compat.py"
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
         if REMOVED_IN_OCP8.search(line)
@@ -34,7 +35,14 @@ def test_no_ocp7_only_names_outside_the_compat_module():
 
 
 def test_compat_names_work_on_the_installed_ocp():
-    from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_VERTEX
+    from OCP.TopAbs import (
+        TopAbs_EDGE,
+        TopAbs_FACE,
+        TopAbs_SHELL,
+        TopAbs_SOLID,
+        TopAbs_VERTEX,
+        TopAbs_WIRE,
+    )
     from OCP.TopExp import TopExp
 
     box = Box(1, 2, 3)
@@ -54,6 +62,7 @@ def test_compat_names_work_on_the_installed_ocp():
     assert seq.Length() == 1
 
     assert _ocp_compat.to_vertex(box.vertices()[0].wrapped).ShapeType() == TopAbs_VERTEX
-    assert _ocp_compat.to_solid(box.solids()[0].wrapped) is not None
-    assert _ocp_compat.to_wire(box.faces()[0].outer_wire().wrapped) is not None
-    assert _ocp_compat.to_shell(box.shells()[0].wrapped) is not None
+    assert _ocp_compat.to_solid(box.solids()[0].wrapped).ShapeType() == TopAbs_SOLID
+    wire = _ocp_compat.to_wire(box.faces()[0].outer_wire().wrapped)
+    assert wire.ShapeType() == TopAbs_WIRE
+    assert _ocp_compat.to_shell(box.shells()[0].wrapped).ShapeType() == TopAbs_SHELL

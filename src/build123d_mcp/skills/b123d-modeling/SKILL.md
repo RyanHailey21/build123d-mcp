@@ -391,12 +391,13 @@ nothing beyond the feature's own volume:
 
 ```python
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Defeaturing
-from OCP.TopoDS import TopoDS
 df = BRepAlgoAPI_Defeaturing()
 df.SetShape(part.wrapped)
 df.AddFaceToRemove(bad_face.wrapped)   # bad_face = the fillet/chamfer face itself
 df.Build()
-removed = Solid(TopoDS.Solid_s(df.Shape()))
+solids = Compound(df.Shape()).solids()   # result is usually a compound; works on OCP 7 and 8
+assert len(solids) == 1, "defeaturing did not return one solid"
+removed = solids[0]
 ```
 
 Verified on a boss with a root fillet: a broad annular cut removed **13×** the

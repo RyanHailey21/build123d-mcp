@@ -1,6 +1,6 @@
 """OCP 7.x / 8.x compatibility shims (#488).
 
-OCP 8 (build123d 0.12+) moved the NCollection instantiations out of
+OCP 8 (build123d 0.13+) moved the NCollection instantiations out of
 ``OCP.TopTools`` into ``OCP.collections`` and turned ``TopoDS`` into a namespace,
 so the static downcasts lost their ``_s`` suffix (``TopoDS.Face_s`` →
 ``TopoDS.Face``). Import the version-neutral names from here instead.

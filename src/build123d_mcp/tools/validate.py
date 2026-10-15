@@ -214,7 +214,7 @@ def _edge_face_adjacency(occ, fmap, emap):
 
     Equivalent to ``MapShapesAndAncestors_s(EDGE, FACE)`` + iterating each edge's
     ancestor list, but built by walking faces' edges with ``TopExp_Explorer``
-    instead. The ancestor-list path returns a ``TopTools_ListOfShape`` whose
+    instead. The ancestor-list path returns a list-of-shapes collection whose
     Python-side iteration is pathologically slow (tens of seconds for a few
     thousand edges on a large B-rep — the dominant cost of the stitch); explorer
     traversal builds the identical adjacency at C speed. Face order within a
