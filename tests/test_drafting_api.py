@@ -44,13 +44,15 @@ def test_constants_are_listed_without_host_paths(monkeypatch):
     fake = types.ModuleType("build123d_drafting")
     fake.__version__ = "9.9"
     fake.FONT = "/srv/venv/site-packages/build123d_drafting/fonts/Sans.ttf"
+    fake.WIN_FONT = "C:\\venv\\Lib\\site-packages\\build123d_drafting\\fonts\\Mono.ttf"
     fake.LIMITS = types.MappingProxyType({"title": 30, "sheet": 4})
     fake.HUGE = list(range(1000))
-    fake.__all__ = ["FONT", "LIMITS", "HUGE"]
+    fake.__all__ = ["FONT", "WIN_FONT", "LIMITS", "HUGE"]
     monkeypatch.setitem(sys.modules, "build123d_drafting", fake)
 
     ref = drafting_api(None)
     assert "FONT = <path to bundled file 'Sans.ttf'>" in ref
-    assert "/srv/venv" not in ref
+    assert "WIN_FONT = <path to bundled file 'Mono.ttf'>" in ref
+    assert "/srv/venv" not in ref and "site-packages" not in ref
     assert "LIMITS = {'title': 30, 'sheet': 4}" in ref
     assert "HUGE = <list: [0, 1, 2" in ref and "999" not in ref

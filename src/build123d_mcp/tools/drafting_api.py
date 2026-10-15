@@ -9,6 +9,7 @@ hand-maintained signature list to drift when drafting-helpers releases.
 import inspect
 import os
 from collections.abc import Mapping
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
 
 _MAX_CONSTANT_REPR = 400
@@ -48,10 +49,15 @@ def _class_entry(name: str, cls: type) -> list[str]:
 
 def _constant_value(obj: Any) -> str:
     """Render a public constant: whole when short, never the server's install path."""
-    if isinstance(obj, (str, os.PathLike)) and os.path.isabs(os.fspath(obj)):
+    if isinstance(obj, (str, os.PathLike)):
         # e.g. DEFAULT_FONT_PATH: the absolute path is host-specific (and private to
-        # the server), so show only the bundled file's name.
-        return f"<path to bundled file {os.path.basename(os.fspath(obj))!r}>"
+        # the server), so show only the bundled file's name. Check both path styles:
+        # os.path.isabs("/srv/x") is False on Windows.
+        text = os.fspath(obj)
+        for flavour in (PurePosixPath, PureWindowsPath):
+            path = flavour(text)
+            if path.is_absolute():
+                return f"<path to bundled file {path.name!r}>"
     if isinstance(obj, Mapping):
         obj = dict(obj)  # mappingproxy etc. read better as a plain dict
     value = repr(obj)
