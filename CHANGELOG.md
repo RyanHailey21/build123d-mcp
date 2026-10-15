@@ -14,6 +14,15 @@
   guard test keeps the removed names out of `src` (code and skill files). The
   supported build123d range is unchanged until a quiddity release with OCP 8
   support is out.
+- **`recognise_features()` copes with newer quiddity (#488).** quiddity 0.3.6+
+  degrades locally on an invalid solid instead of raising, so an invalid shape
+  now still gets the repair guidance: an error when nothing was proven, a
+  `warning` alongside features proven on its sound regions. Any `*_patterns` /
+  `*_refusals` result field (e.g. 0.3.8's `circular_face_patterns`) is treated
+  as an aggregate rather than offered as a targetable family.
+- **`build123d://drafting` lists public constants.** The API reference now has
+  a Constants section (e.g. `DEFAULT_FONT_PATH` in drafting-helpers 0.15+)
+  instead of silently dropping non-callables.
 
 ## v0.3.90
 

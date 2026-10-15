@@ -32,10 +32,27 @@ _NON_TARGET_RESULT_FIELDS = frozenset(
         "gusset_rib_patterns",
     }
 )
+# quiddity adds pattern aggregates over time (e.g. ``circular_face_patterns``), so
+# any ``*_patterns`` / ``*_refusals`` field is treated as an aggregate by name too.
+_AGGREGATE_SUFFIXES = ("_patterns", "_refusals")
+
+
+def _is_non_target(name: str) -> bool:
+    return name in _NON_TARGET_RESULT_FIELDS or name.endswith(_AGGREGATE_SUFFIXES)
+
+
 # Aggregate fields agents still ask for by name. They carry no per-feature
 # evidence (so no edit handles), but their records are useful context, so they
 # are returned read-only instead of rejected as unknown families.
-_READ_ONLY_RESULT_FIELDS = _NON_TARGET_RESULT_FIELDS - {"rotational", "section_recess_refusals"}
+def _is_read_only(name: str) -> bool:
+    return _is_non_target(name) and name != "rotational" and not name.endswith("_refusals")
+
+
+_INVALID_SOLID_GUIDANCE = (
+    "Recognition needs a valid solid, and this shape fails the B-rep validity check. "
+    "Repair it first (read build123d://skill/repair; validate() must pass), then call "
+    "recognise_features() again on the repaired shape."
+)
 
 
 def _read_only_records(value: Any) -> list[Any]:
@@ -260,25 +277,28 @@ def recognise_features(
                 # The recogniser only makes claims about a proven valid solid, so an
                 # invalid import fails deep inside one family with an opaque message.
                 return json.dumps(
-                    {
-                        "error": (
-                            "Recognition needs a valid solid, and this shape fails the "
-                            "B-rep validity check. Repair it first (read "
-                            "build123d://skill/repair; validate() must pass), then call "
-                            "recognise_features() again on the repaired shape."
-                        ),
-                        "recogniser_detail": str(exc),
-                    },
+                    {"error": _INVALID_SOLID_GUIDANCE, "recogniser_detail": str(exc)},
                     indent=2,
                 )
             return json.dumps({"error": f"Recognition failed: {exc}"}, indent=2)
         session._recognition_runs[cache_key] = run
 
     evidence = run["evidence"]
+    invalid_source = not source.is_valid
+    if invalid_source and not evidence.features:
+        # Newer quiddity degrades locally on invalid input instead of raising, so an
+        # empty inventory here means "no proof", not "no features": say why.
+        return json.dumps(
+            {
+                "error": _INVALID_SOLID_GUIDANCE,
+                "recogniser_detail": "no feature could be proven on the invalid solid",
+            },
+            indent=2,
+        )
     result = evidence.result
     inventory = _inventory(result)
-    known = set(inventory) - _NON_TARGET_RESULT_FIELDS
-    read_only_known = set(inventory) & _READ_ONLY_RESULT_FIELDS
+    known = {name for name in inventory if not _is_non_target(name)}
+    read_only_known = {name for name in inventory if _is_read_only(name)}
     requested, unknown = _normalise_families(families, known | read_only_known)
     if unknown:
         return json.dumps(
@@ -340,6 +360,11 @@ def recognise_features(
         response["read_only_note"] = (
             "Aggregate records for context only: they have no @feature handles. "
             "Target edits through the member families (e.g. holes) instead."
+        )
+    if invalid_source:
+        response["warning"] = (
+            "The shape fails the B-rep validity check; these features were proven only on "
+            "its sound regions. " + _INVALID_SOLID_GUIDANCE
         )
     frame = _frame(evidence)
     if frame is not None:

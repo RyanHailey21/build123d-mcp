@@ -56,6 +56,7 @@ def drafting_api(session: Any) -> str:
     version = getattr(bd, "__version__", "unknown")
     classes: list[str] = []
     functions: list[str] = []
+    constants: list[str] = []
     for name in getattr(bd, "__all__", sorted(dir(bd))):
         obj = getattr(bd, name, None)
         if obj is None or inspect.ismodule(obj):
@@ -69,6 +70,9 @@ def drafting_api(session: Any) -> str:
             if doc:
                 functions.append(f"    {doc}")
             functions.append("")
+        else:
+            value = repr(obj)
+            constants.append(f"{name} = {value if len(value) <= 120 else value[:117] + '...'}")
 
     header = [
         f"build123d-drafting-helpers API reference (installed version: {version})",
@@ -78,4 +82,7 @@ def drafting_api(session: Any) -> str:
         "=== Classes ===",
         "",
     ]
-    return "\n".join(header + classes + ["=== Functions ===", ""] + functions).rstrip() + "\n"
+    sections = header + classes + ["=== Functions ===", ""] + functions
+    if constants:
+        sections += ["=== Constants ===", "", *constants]
+    return "\n".join(sections).rstrip() + "\n"
