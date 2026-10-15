@@ -60,15 +60,15 @@ wheels = [
 
 [[package]]
 name = "augura"
-version = "0.1.6"
+version = "0.1.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "build123d" },
     { name = "trimesh" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/97/77/6791036ad15e6b30442ca3fcec0abf32eea27f79fdb05ab0241d17ace0ca/augura-0.1.6.tar.gz", hash = "sha256:5cd317f834473ccb6f6ec51ad5fae67cd199c0023aef2afac889b4b9e4c02d05", size = 335345, upload-time = "2026-07-03T09:12:50.155Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/de/b5734e6e02bb04660d3475caf6e48d049dafe068e516738ab9a145ce1578/augura-0.1.8.tar.gz", hash = "sha256:1d1663b74a29e74ed3cf59f9dc30e221d2b77ddc6162dee657dd2e9baf330a68", size = 336212, upload-time = "2026-10-15T18:40:02.701Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/05/61/c408814a81042bf85350c831ada73de1165e8b50314e248e5036a8a3c164/augura-0.1.6-py3-none-any.whl", hash = "sha256:d8819463a92647caf7551054fb2b56fbbc52eab2f1e33a4a020d0e92a8cb6f8c", size = 40165, upload-time = "2026-07-03T09:12:48.653Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/9e/aa5a6518a606bbb40709035fc3cb6bffd09b60e8332252cc2314b8cfa817/augura-0.1.8-py3-none-any.whl", hash = "sha256:34b7375391bca8f3064d03766a32cad6403f08f5ff7eaf0bc89f66c8f50c4baa", size = 40165, upload-time = "2026-10-15T18:40:01.073Z" },
 ]
 
 [[package]]
@@ -158,9 +158,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "augura", specifier = ">=0.1.6" },
+    { name = "augura", specifier = ">=0.1.8" },
     { name = "bd-warehouse" },
-    { name = "build123d", specifier = ">=0.10,<0.12" },
+    { name = "build123d", specifier = ">=0.10,<0.14" },
     { name = "build123d-drafting-helpers", specifier = ">=0.10.0" },
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "mcp", specifier = ">=2,<3" },

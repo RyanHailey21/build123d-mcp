@@ -4,6 +4,10 @@
 
 ### Changed
 
+- **Supports build123d 0.12 and 0.13 (#488).** The range is now
+  `build123d>=0.10,<0.14`, and CI tests build123d 0.13 (OCP 8) on Linux,
+  macOS and Windows. This needs quiddity 0.3.11 and augura 0.1.8, which add
+  OCP 8 support, so those are the new minimums.
 - **OCP 7/8 compatibility shim (#488).** OCP 8 (build123d 0.13+) removed the
   `TopoDS.*_s` downcasts and moved `TopTools_IndexedMapOfShape`,
   `TopTools_IndexedDataMapOfShapeListOfShape` and `TopTools_HSequenceOfShape` to
@@ -11,9 +15,7 @@
   tessellate and shape-compare subprocesses now import them through
   `build123d_mcp._ocp_compat`, which prefers the OCP 7 names. The packaged
   repair and modeling skill recipes use build123d-level casts instead, and a
-  guard test keeps the removed names out of `src` (code and skill files). The
-  supported build123d range is unchanged until a quiddity release with OCP 8
-  support is out.
+  guard test keeps the removed names out of `src` (code and skill files).
 - **`recognise_features()` copes with newer quiddity (#488).** quiddity 0.3.6+
   degrades locally on an invalid solid instead of raising, so an invalid shape
   now still gets the repair guidance: an error when nothing was proven, a

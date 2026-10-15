@@ -12,8 +12,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.12", "3.13", "3.14"]
-        # build123d is pre-1.0; test against both supported minors.
-        build123d: ["0.10.0", "0.11.0"]
+        # build123d is pre-1.0; test the supported minors. 0.13 runs on OCP 8;
+        # 0.12 shares 0.11's OCP 7.9 stack.
+        build123d: ["0.10.0", "0.11.0", "0.13.0"]
         exclude:
           # 0.10 is the legacy-compat path: test it only at the baseline
           # Python (3.12). build123d 0.10 also caps at <3.14 regardless.
