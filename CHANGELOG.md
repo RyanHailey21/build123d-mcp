@@ -21,13 +21,16 @@
   now still gets the repair guidance: an error when nothing was proven, a
   `warning` alongside features proven on its sound regions. Any `*_patterns` /
   `*_refusals` result field (e.g. 0.3.8's `circular_face_patterns`) is treated
-  as an aggregate rather than offered as a targetable family.
+  as a read-only aggregate rather than offered as a targetable family, and the
+  summary's `targetable` counts only families that can actually be targeted.
+  Shape validity is checked once per recognition run instead of on every call.
 - **Sandbox allows `OCP.collections`.** OCP 8 (build123d 0.13) moved the
   collection types user code builds (`Array1_gp_Pnt`, `IndexedMap_TopoDS_Shape`,
   ...) there from `OCP.TColgp` / `OCP.TopTools`, which stay allowed for OCP 7.
 - **`build123d://drafting` lists public constants.** The API reference now has
   a Constants section (e.g. `DEFAULT_FONT_PATH` in drafting-helpers 0.15+)
-  instead of silently dropping non-callables.
+  instead of silently dropping non-callables. Path constants show only the
+  bundled file's name, never the server's install path.
 
 ## v0.3.90
 

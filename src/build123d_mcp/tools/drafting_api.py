@@ -7,7 +7,11 @@ hand-maintained signature list to drift when drafting-helpers releases.
 """
 
 import inspect
+import os
+from collections.abc import Mapping
 from typing import Any
+
+_MAX_CONSTANT_REPR = 400
 
 
 def _first_doc_line(obj: Any) -> str:
@@ -42,6 +46,20 @@ def _class_entry(name: str, cls: type) -> list[str]:
     return lines
 
 
+def _constant_value(obj: Any) -> str:
+    """Render a public constant: whole when short, never the server's install path."""
+    if isinstance(obj, (str, os.PathLike)) and os.path.isabs(os.fspath(obj)):
+        # e.g. DEFAULT_FONT_PATH: the absolute path is host-specific (and private to
+        # the server), so show only the bundled file's name.
+        return f"<path to bundled file {os.path.basename(os.fspath(obj))!r}>"
+    if isinstance(obj, Mapping):
+        obj = dict(obj)  # mappingproxy etc. read better as a plain dict
+    value = repr(obj)
+    if len(value) <= _MAX_CONSTANT_REPR:
+        return value
+    return f"<{type(obj).__name__}: {value[: _MAX_CONSTANT_REPR - 20]}...>"
+
+
 def drafting_api(session: Any) -> str:
     """Build the API reference text from the installed build123d_drafting.
 
@@ -71,8 +89,7 @@ def drafting_api(session: Any) -> str:
                 functions.append(f"    {doc}")
             functions.append("")
         else:
-            value = repr(obj)
-            constants.append(f"{name} = {value if len(value) <= 120 else value[:117] + '...'}")
+            constants.append(f"{name} = {_constant_value(obj)}")
 
     header = [
         f"build123d-drafting-helpers API reference (installed version: {version})",

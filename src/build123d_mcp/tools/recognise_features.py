@@ -226,6 +226,8 @@ def _build_run(session: Any, source: Any, source_name: str, coordinate_frame: st
         session._recognition_targets[reference] = target
     return {
         "run": run_number,
+        # BRepCheck on a large part takes seconds; check once per run, not per call.
+        "source_valid": source.is_valid,
         "source": source,
         "source_name": source_name,
         "coordinate_frame": coordinate_frame,
@@ -284,7 +286,7 @@ def recognise_features(
         session._recognition_runs[cache_key] = run
 
     evidence = run["evidence"]
-    invalid_source = not source.is_valid
+    invalid_source = not run["source_valid"]
     if invalid_source and not evidence.features:
         # Newer quiddity degrades locally on invalid input instead of raising, so an
         # empty inventory here means "no proof", not "no features": say why.
@@ -347,7 +349,12 @@ def recognise_features(
         "run": run["run"],
         "cached": cached,
         "inventory": inventory,
-        "targetable": dict(sorted(Counter(t["family"] for t in run["targets"]).items())),
+        # quiddity also publishes pattern aggregates (hole_patterns,
+        # circular_face_patterns) as evidence features; they are offered read-only
+        # here, so count only the families the caller can actually target.
+        "targetable": dict(
+            sorted(Counter(t["family"] for t in run["targets"] if t["family"] in known).items())
+        ),
         "association": _association(evidence),
         "requested_families": selected,
         "matched": len(matching),
