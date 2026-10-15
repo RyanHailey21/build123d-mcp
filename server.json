@@ -7,12 +7,12 @@
     "url": "https://github.com/pzfreo/build123d-mcp",
     "source": "github"
   },
-  "version": "0.3.91",
+  "version": "0.3.92",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "build123d-mcp",
-      "version": "0.3.91",
+      "version": "0.3.92",
       "transport": {
         "type": "stdio"
       },

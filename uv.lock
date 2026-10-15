@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11, <3.15"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -126,7 +126,7 @@ wheels = [
 
 [[package]]
 name = "build123d-mcp"
-version = "0.3.91.dev0"
+version = "0.3.92.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "augura" },
