@@ -401,7 +401,12 @@ def run_audit(
     for p_idx in reassigned_map:
         _finalize_param(p_idx)
 
-    can_parallel = not _is_mocked_callable(evaluate_program) and len(jobs) > 1
+    # Adaptive parallelization: spawning worker processes (especially on Windows) reloads
+    # heavy native C++ DLLs (OCP/VTK), adding startup latency. Only spawn parallel workers
+    # when the baseline build time indicates a heavy model where multi-core savings exceed
+    # process startup overhead.
+    is_heavy = base_time >= 0.8 or (os.name != "nt" and base_time >= 0.15)
+    can_parallel = not _is_mocked_callable(evaluate_program) and len(jobs) > 2 and is_heavy
     cpu_cores = os.cpu_count() or 1
     max_workers = min(cpu_cores, len(jobs), 8)
 
