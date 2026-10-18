@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11, <3.15"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -139,6 +139,7 @@ dependencies = [
     { name = "quiddity" },
     { name = "resvg-py" },
     { name = "scipy" },
+    { name = "trimesh" },
     { name = "vtk" },
 ]
 
@@ -168,6 +169,7 @@ requires-dist = [
     { name = "quiddity", specifier = ">=0.3.11,<0.4" },
     { name = "resvg-py" },
     { name = "scipy" },
+    { name = "trimesh", specifier = ">=4,<5" },
     { name = "uvicorn", marker = "extra == 'http'" },
     { name = "vtk", specifier = ">=9.3" },
 ]

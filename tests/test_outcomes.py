@@ -876,6 +876,8 @@ def test_mcp_lists_all_tools():
 
     names = asyncio.run(_mcp_session(run))
     assert names == {
+        "verify_saved_geometry",
+        "export_bundle",
         "execute",
         "execute_file",
         "render_view",

@@ -46,6 +46,7 @@ dependencies = [
     "augura>=0.1.8",
     "scipy",
     "pillow",
+    "trimesh>=4,<5",
 ]
 
 [project.optional-dependencies]

@@ -72,6 +72,38 @@ def _server_version() -> str:
 
 
 mcp = MCPServer("build123d-mcp", instructions=_INSTRUCTIONS, version=_server_version())
+
+
+@mcp.tool(annotations=_MUTATING)
+async def verify_saved_geometry(instances: list[dict], output_dir: str,
+                                pairs: list[dict] | None = None, timeout: float = 60) -> dict:
+    """Verify saved STEP geometry in a disposable process, never the live session.
+
+    instances: {id,path,placement?:[x,y,z,rx,ry,rz]} (mm/degrees).
+    pairs: {a,b,minimum_clearance_mm?:0,allowed_overlap_mm3?:0}.
+    Supply actual hardware/tool envelope STEP instances to check access. Each call
+    checks one explicit pose, not a continuous sweep. Reports persist even on timeout.
+    """
+    from build123d_mcp.isolated_jobs import run_job
+    return await anyio.to_thread.run_sync(
+        functools.partial(run_job, instances, output_dir, 'verify', pairs, timeout))
+
+
+@mcp.tool(annotations=_MUTATING)
+async def export_bundle(instances: list[dict], output_dir: str, timeout: float = 60) -> dict:
+    """Publish an immutable STEP/STL bundle from saved STEP inputs.
+
+    instances: {id,path,placement?:[x,y,z,rx,ry,rz]}; placement is the explicit
+    print transform in mm/degrees. Writes a unique staging/job directory. Only
+    after every STEP round trip and mesh gate passes is latest.json atomically
+    replaced. Failures preserve the previous pointer and artifacts. Includes
+    input/output hashes; does not assert source-script provenance. No live-session
+    geometry is mutated, exported, or rebuilt by this operation.
+    """
+    from build123d_mcp.isolated_jobs import run_job
+    return await anyio.to_thread.run_sync(
+        functools.partial(run_job, instances, output_dir, 'bundle', None, timeout))
+
 _session: WorkerSession
 _session_var: contextvars.ContextVar[WorkerSession | None] = contextvars.ContextVar(
     "b123d_session", default=None
