@@ -322,6 +322,13 @@ def _pull_viewer_deltas(ws, tmp_path):
     assert r["remove"] == []
 
 
+def _export_freecad_assembly(ws, tmp_path):
+    out = tmp_path / "assembly.FCStd"
+    result = json.loads(ws.export_freecad_assembly(str(out), object_names="a,b"))
+    assert result["status"] in ("success", "script_generated")
+    assert "a" in result["parts"] and "b" in result["parts"]
+
+
 # op name -> check function. The op name MUST match the dispatch/proxy op string.
 SESSION_STATEFUL_TOOLS = {
     "measure": _measure,
@@ -358,6 +365,7 @@ SESSION_STATEFUL_TOOLS = {
     "inspect_drawing": _inspect_drawing,
     "export_file": _export_file,
     "bank_candidate": _bank_candidate,
+    "export_freecad_assembly": _export_freecad_assembly,
     "render_view": _render_view,
     "pull_viewer_deltas": _pull_viewer_deltas,
 }

@@ -698,6 +698,25 @@ def bank_candidate(filename: str, object_name: str = "", snapshot_name: str = ""
     return _resolve_session().bank_candidate(filename, object_name, snapshot_name)
 
 
+@mcp.tool(annotations=_IDEMPOTENT)
+def export_freecad_assembly(
+    filename: str = "",
+    ground_part: str = "",
+    object_names: str = "*",
+    joints_json: str = "",
+    freecad_cmd: str = "",
+    solve: bool = True,
+) -> str:
+    """Export build123d parts and kinematic joints to a FreeCAD 1.1 Assembly document (.FCStd).
+    Exports component solids as individual STEP files and assembles them headlessly into FreeCAD 1.1's
+    native Assembly workbench container with true kinematic joints (Revolute, Fixed, Slider, Cylindrical,
+    Ball), base grounding, and constraint solving. Joints are auto-discovered from build123d shape joints
+    and connect_to relationships, or specified explicitly via joints_json."""
+    return _resolve_session().export_freecad_assembly(
+        filename, ground_part, object_names, joints_json, freecad_cmd, solve
+    )
+
+
 @mcp.tool(annotations=_READ_ONLY)
 @_drawing_deprecation
 def inspect_drawing(objects: str = "", svg_path: str = "") -> str:

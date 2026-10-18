@@ -935,6 +935,18 @@ class WorkerSession:
     ) -> str:
         raise NotImplementedError
 
+    @_op(_tool(f"{_T}.export_freecad:export_freecad_assembly"), _export_budget)
+    def export_freecad_assembly(
+        self,
+        filename: str = "",
+        ground_part: str = "",
+        object_names: str = "*",
+        joints_json: str = "",
+        freecad_cmd: str = "",
+        solve: bool = True,
+    ) -> str:
+        raise NotImplementedError
+
     # measure/validate/clearance/cross_sections isolate a large shape's native
     # analysis in a bounded subprocess (tools/_bounded.py, #360). That subprocess is
     # bounded by op_budget() == _export_budget, so the parent watchdog must be the
