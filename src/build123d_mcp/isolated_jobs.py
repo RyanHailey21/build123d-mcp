@@ -105,6 +105,9 @@ def run_job(instances, output_dir, mode="verify", pairs=None, timeout=60):
     report.update(job_dir=str(job), inputs=items, verifier_sha256=sha(__file__))
     if any(not Path(x["path"]).is_file() or sha(x["path"]) != x["sha256"] for x in items):
         report.update(status="error", error="Source changed during job; publication withheld")
+    from build123d_mcp.evidence import envelope
+    report["evidence"] = envelope(report, "build123d-mcp", mode, job, items,
+                                  report.get("artifacts", []), __file__)
     write(report_path, report)
     if mode == "bundle" and report.get("status") == "pass":
         # The pointer is the sole commit point. Never replace a previous release's files.

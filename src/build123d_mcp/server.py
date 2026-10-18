@@ -74,6 +74,19 @@ def _server_version() -> str:
 mcp = MCPServer("build123d-mcp", instructions=_INSTRUCTIONS, version=_server_version())
 
 
+@mcp.tool(annotations=_READ_ONLY)
+def cad_capabilities() -> dict:
+    """Report installed workflow capabilities without starting a CAD worker."""
+    from build123d_mcp.evidence import versions
+    return {"schema": "cad-capabilities/1", "producer": "build123d-mcp",
+            "versions": versions("build123d-mcp", "build123d"),
+            "evidence_schema": "cad-evidence/1",
+            "operations": {"execute_file": "available", "export_bundle": "available",
+                           "verify_saved_geometry": "available"},
+            "limits": {"isolated_timeout_seconds": 60},
+            "scope": "Installed capabilities; not a runtime geometry or dependency health check"}
+
+
 @mcp.tool(annotations=_MUTATING)
 async def verify_saved_geometry(instances: list[dict], output_dir: str,
                                 pairs: list[dict] | None = None, timeout: float = 60) -> dict:

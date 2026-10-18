@@ -364,3 +364,9 @@ Other advanced topics:
 Active development.
 
 <!-- mcp-name: io.github.pzfreo/build123d-mcp -->
+
+
+## Portable project workflows
+
+See [portable workflow capabilities and evidence](docs/portable-workflow.md) for
+pinned checkout setup, capability discovery and revision-bound job reports.
