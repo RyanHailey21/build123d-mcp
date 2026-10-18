@@ -6,8 +6,10 @@ for a small project-local starter. No companion MCP server is needed.
 
 Install uv and the Python version required by pyproject.toml. Clone this fork,
 check out the exact tested commit, then run `uv sync --frozen`. Configure your
-agent to launch `uv --directory /absolute/checkout run --frozen build123d-mcp`.
-Call `cad_capabilities` first. It reports installed features and discovery only;
+agent to launch `uv --project /absolute/checkout run --frozen build123d-mcp`.
+Set the server working directory to the project workspace; --project selects the
+installed environment without changing that working directory. This matters for
+build123d allowed file roots. Call `cad_capabilities` first. It reports installed features and discovery only;
 it is not a successful geometry check. Existing tools and result fields remain
 compatible. Restart an already-running host after updating its checkout.
 
