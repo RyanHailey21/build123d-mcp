@@ -229,7 +229,7 @@ def _param_verdict(results: list) -> str:
     return "robust"
 
 
-def evaluate_program(program: str, cap_s: int) -> dict:
+def evaluate_program(program: str, cap_s: int, early_exit: bool = True) -> dict:
     """Rebuild ``program`` in a fresh Session and gate the result.
 
     Returns ``{rebuilt: False, error}`` or
@@ -245,7 +245,7 @@ def evaluate_program(program: str, cap_s: int) -> dict:
     if sess.current_shape is None:
         return {"rebuilt": False, "error": "program ran but produced no shape/solid"}
     try:
-        report = _gate_report(sess.current_shape)
+        report = _gate_report(sess.current_shape, early_exit=early_exit)
     except Exception as exc:  # gate crashed on this shape — inconclusive, not fragility
         return {
             "rebuilt": True,
@@ -264,8 +264,51 @@ def evaluate_program(program: str, cap_s: int) -> dict:
     }
 
 
+def _eval_call(fn, prog: str, cap_s: int, early_exit: bool = True) -> dict:
+    """Invoke evaluate_program, falling back to 2-arg signature if mock doesn't accept early_exit."""
+    try:
+        return fn(prog, cap_s, early_exit=early_exit)
+    except TypeError:
+        return fn(prog, cap_s)
+
+
+def _worker_init(security_cfg: dict | None) -> None:
+    """Initialize worker process in the pool: apply security settings and warm import."""
+    if security_cfg:
+        _apply_security(security_cfg)
+    _warm_build123d_import()
+
+
+def _eval_worker_task(args: tuple) -> tuple:
+    """Worker task wrapper for ProcessPoolExecutor.
+
+    args: (p_idx, pert_idx, rewritten_program, cap_s, pert_info)
+    returns: (p_idx, pert_idx, pert_info, g_result)
+    """
+    p_idx, pert_idx, rewritten_program, cap_s, pert_info = args
+    g = _eval_call(evaluate_program, rewritten_program, cap_s, early_exit=True)
+    return p_idx, pert_idx, pert_info, g
+
+
+def _is_mocked_callable(fn) -> bool:
+    """Return True if fn is a mock/local function not picklable for multiprocessing."""
+    if getattr(fn, "__name__", "") != "evaluate_program":
+        return True
+    if "<locals>" in getattr(fn, "__qualname__", ""):
+        return True
+    if getattr(fn, "__module__", "") != __name__:
+        return True
+    return False
+
+
 def run_audit(
-    program: str, params: list, epsilon: float, budget_s: float, per_run_cap: int, out_path: str
+    program: str,
+    params: list,
+    epsilon: float,
+    budget_s: float,
+    per_run_cap: int,
+    out_path: str,
+    security: dict | None = None,
 ) -> dict:
     """Baseline + per-parameter perturbation audit, persisted incrementally.
 
@@ -295,7 +338,7 @@ def run_audit(
     # Baseline gets the full per-run budget (it may be the heaviest single build);
     # time it so perturbations can be capped relative to it.
     t_base = time.monotonic()
-    state["baseline"] = evaluate_program(program, cap(per_run_cap))
+    state["baseline"] = _eval_call(evaluate_program, program, cap(per_run_cap), early_exit=False)
     base_time = time.monotonic() - t_base
     state["baseline_ok"] = bool(
         state["baseline"].get("rebuilt") and state["baseline"].get("passes_gate")
@@ -309,66 +352,157 @@ def run_audit(
     base_vol = state["baseline"]["volume"]
     perturb_limit = max(_MIN_PERTURB_S, min(per_run_cap, int(base_time * _BASELINE_CAP_FACTOR) + 2))
 
-    for p in params:
-        if remaining() <= _STOP_THRESHOLD_S:
-            break
+    reassigned_map = {}
+    jobs = []
+    param_expected_counts = {}
+
+    for p_idx, p in enumerate(params):
         if p.get("reassigned"):
             # The later top-level assignment overwrites the one we rewrite, so the
             # rebuild is a guaranteed no-op — skip it (reclaim budget) and mark the
             # parameter inconclusive rather than counting it as robust.
-            state["audit"].append(
-                {
-                    **p,
-                    "perturbations": [],
-                    "verdict": "inconclusive",
-                    "brittle": False,
-                    "reason": "reassigned at top level — perturbing the first assignment is "
-                    "overwritten by the later one; audit inconclusive",
-                }
-            )
-            flush()
+            reassigned_map[p_idx] = {
+                **p,
+                "perturbations": [],
+                "verdict": "inconclusive",
+                "brittle": False,
+                "reason": "reassigned at top level — perturbing the first assignment is "
+                "overwritten by the later one; audit inconclusive",
+            }
             continue
-        results: list = []
-        for pert in _perturbations(p["value"], p["type"] == "int", epsilon):
-            if remaining() <= _STOP_THRESHOLD_S:
-                break
-            g = evaluate_program(
-                _rewrite(program, p["name"], pert["new_value"]), cap(perturb_limit)
-            )
-            entry = {"delta_pct": pert["delta_pct"], "new_value": pert["new_value"]}
-            if pert["discrete"]:
-                entry["discrete_step"] = True
-            if not g.get("rebuilt"):
-                # A failed rebuild is NOT automatically brittle — classify the cause (#341).
-                entry["rebuilt"] = False
-                entry["cause"] = _classify_error(g.get("error", ""))
-                entry["error"] = g.get("error")
-                results.append(entry)
-                continue
-            entry["rebuilt"] = True
-            entry["passes_gate"] = g["passes_gate"]
-            entry["n_solids"] = g["n_solids"]
-            entry["volume"] = g["volume"]
-            if base_vol:
-                entry["volume_delta_pct"] = round((g["volume"] - base_vol) / base_vol * 100, 1)
-            if g.get("gate_error"):
-                entry["cause"] = "gate_error"  # gate crashed → inconclusive, not brittle
-                entry["reasons"] = g["reasons"]
-            elif not g["passes_gate"]:
-                entry["cause"] = "gate_fail"
-                entry["reasons"] = g["reasons"]
-            results.append(entry)
-        verdict = _param_verdict(results)
-        state["audit"].append(
-            {
+
+        perts = _perturbations(p["value"], p["type"] == "int", epsilon)
+        param_expected_counts[p_idx] = len(perts)
+        for pert_idx, pert in enumerate(perts):
+            rewritten = _rewrite(program, p["name"], pert["new_value"])
+            jobs.append((p_idx, pert_idx, rewritten, pert))
+
+    param_results: dict[int, dict[int, dict]] = {p_idx: {} for p_idx in range(len(params))}
+    completed_params: dict[int, dict] = {}
+
+    def _finalize_param(p_idx: int) -> None:
+        p = params[p_idx]
+        if p_idx in reassigned_map:
+            completed_params[p_idx] = reassigned_map[p_idx]
+        else:
+            p_res_dict = param_results[p_idx]
+            results = [p_res_dict[k] for k in sorted(p_res_dict.keys())]
+            verdict = _param_verdict(results)
+            completed_params[p_idx] = {
                 **p,
                 "perturbations": results,
                 "verdict": verdict,
-                "brittle": verdict == "brittle",  # back-compat flag
+                "brittle": verdict == "brittle",
                 "reason": _VERDICT_REASON[verdict],
             }
-        )
+        state["audit"] = [completed_params[i] for i in sorted(completed_params.keys())]
         flush()
+
+    for p_idx in reassigned_map:
+        _finalize_param(p_idx)
+
+    can_parallel = not _is_mocked_callable(evaluate_program) and len(jobs) > 1
+    cpu_cores = os.cpu_count() or 1
+    max_workers = min(cpu_cores, len(jobs), 8)
+
+    if can_parallel and max_workers > 1:
+        import concurrent.futures
+
+        try:
+            with concurrent.futures.ProcessPoolExecutor(
+                max_workers=max_workers,
+                initializer=_worker_init,
+                initargs=(security,),
+            ) as executor:
+                future_to_job = {}
+                for job in jobs:
+                    if remaining() <= _STOP_THRESHOLD_S:
+                        break
+                    p_idx, pert_idx, rewritten, pert = job
+                    cap_val = cap(perturb_limit)
+                    f = executor.submit(
+                        _eval_worker_task, (p_idx, pert_idx, rewritten, cap_val, pert)
+                    )
+                    future_to_job[f] = job
+
+                for future in concurrent.futures.as_completed(future_to_job):
+                    if remaining() <= _STOP_THRESHOLD_S:
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        break
+                    try:
+                        p_idx, pert_idx, pert_info, g = future.result()
+                    except Exception as exc:
+                        p_idx, pert_idx, _, pert_info = future_to_job[future]
+                        g = {"rebuilt": False, "error": str(exc)}
+
+                    entry = {
+                        "delta_pct": pert_info["delta_pct"],
+                        "new_value": pert_info["new_value"],
+                    }
+                    if pert_info.get("discrete"):
+                        entry["discrete_step"] = True
+                    if not g.get("rebuilt"):
+                        entry["rebuilt"] = False
+                        entry["cause"] = _classify_error(g.get("error", ""))
+                        entry["error"] = g.get("error")
+                    else:
+                        entry["rebuilt"] = True
+                        entry["passes_gate"] = g["passes_gate"]
+                        entry["n_solids"] = g["n_solids"]
+                        entry["volume"] = g["volume"]
+                        if base_vol:
+                            entry["volume_delta_pct"] = round(
+                                (g["volume"] - base_vol) / base_vol * 100, 1
+                            )
+                        if g.get("gate_error"):
+                            entry["cause"] = "gate_error"
+                            entry["reasons"] = g["reasons"]
+                        elif not g["passes_gate"]:
+                            entry["cause"] = "gate_fail"
+                            entry["reasons"] = g["reasons"]
+                    param_results[p_idx][pert_idx] = entry
+                    if len(param_results[p_idx]) == param_expected_counts.get(p_idx, 0):
+                        _finalize_param(p_idx)
+        except Exception:
+            # Fall back to sequential if parallel execution raises or is blocked
+            can_parallel = False
+
+    if not can_parallel:
+        for job in jobs:
+            p_idx, pert_idx, rewritten, pert = job
+            if p_idx in completed_params:
+                continue
+            if remaining() <= _STOP_THRESHOLD_S:
+                break
+            g = _eval_call(evaluate_program, rewritten, cap(perturb_limit), early_exit=True)
+            entry = {"delta_pct": pert["delta_pct"], "new_value": pert["new_value"]}
+            if pert.get("discrete"):
+                entry["discrete_step"] = True
+            if not g.get("rebuilt"):
+                entry["rebuilt"] = False
+                entry["cause"] = _classify_error(g.get("error", ""))
+                entry["error"] = g.get("error")
+            else:
+                entry["rebuilt"] = True
+                entry["passes_gate"] = g["passes_gate"]
+                entry["n_solids"] = g["n_solids"]
+                entry["volume"] = g["volume"]
+                if base_vol:
+                    entry["volume_delta_pct"] = round((g["volume"] - base_vol) / base_vol * 100, 1)
+                if g.get("gate_error"):
+                    entry["cause"] = "gate_error"
+                    entry["reasons"] = g["reasons"]
+                elif not g["passes_gate"]:
+                    entry["cause"] = "gate_fail"
+                    entry["reasons"] = g["reasons"]
+            param_results[p_idx][pert_idx] = entry
+            if len(param_results[p_idx]) == param_expected_counts.get(p_idx, 0):
+                _finalize_param(p_idx)
+
+    # Ensure any parameter with partial results is finalized if budget expired
+    for p_idx in range(len(params)):
+        if p_idx not in completed_params and param_results[p_idx]:
+            _finalize_param(p_idx)
 
     # completed only if every parameter was audited — a soft-budget break leaves
     # it False so the parent labels the partial report "time budget exhausted".
@@ -394,9 +528,16 @@ def _apply_security(sec: dict) -> None:
 def main(in_json: str, out_json: str) -> None:
     with open(in_json) as f:
         cfg = json.load(f)
-    _apply_security(cfg.get("security") or {})
+    sec = cfg.get("security") or {}
+    _apply_security(sec)
     run_audit(
-        cfg["program"], cfg["params"], cfg["epsilon"], cfg["budget_s"], cfg["per_run_cap"], out_json
+        cfg["program"],
+        cfg["params"],
+        cfg["epsilon"],
+        cfg["budget_s"],
+        cfg["per_run_cap"],
+        out_json,
+        security=sec,
     )
 
 
