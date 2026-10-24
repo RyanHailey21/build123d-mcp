@@ -5,6 +5,33 @@ This document outlines how `build123d-mcp` interacts with FreeCAD 1.1's native A
 ## Overview
 The `export_freecad_assembly` tool bridges `build123d` programmatic solid modeling with FreeCAD 1.1's native Assembly solver and joint constraints.
 
+## Send directly to the running FreeCAD app
+
+Use **`send_to_freecad`** for the complete model-to-app workflow. It takes the same part selection,
+grounding and mate specification as the exporter, requires a successful solve, then opens the native
+assembly in the running FreeCAD GUI. There is no intermediate repair script or second model-authored
+tool call. Example: `send_to_freecad(object_names="base,arm", ground_part="base")` after defining
+and connecting the build123d joints. Belts/gears can be supplied through `joints_json`.
+
+The FreeCAD MCP addon RPC server must be running locally, by default on port 9875. The build123d
+server talks to that addon directly; it does not require the separate freecad-mcp Python package.
+Set `FREECAD_MCP_PORT` and, if authentication is enabled, `FREECAD_MCP_TOKEN` in the build123d server
+environment. Credentials are sent in an Authorization header, not the URL. This handoff is local-only
+because the app must be able to read the exported path.
+
+Omitting `filename` creates a unique `freecad-transfers/assembly-*.FCStd` snapshot beneath the server's
+working directory. Explicit filenames must be new. Existing files and open documents are not
+overwritten, closed, saved or reloaded. GUI failure retains the solved export and reports
+`exported_handoff_failed`; a timeout is an unconfirmed delivery, so inspect the app before retrying.
+`export_freecad_assembly` remains available when only a file is wanted.
+
+The opt-in `scripts/smoke_freecad_handoff.py --output NEW.FCStd` exercises the actual MCP stdio tool
+against the running app using a disposable three-part, two-revolute, one-belt assembly. It does not
+load or modify an existing design. `--server-python` selects a deployed runtime for the same test.
+
+Validation on Windows/FreeCAD 1.1 (2026-10-23): 18 export/handoff tests passed; the MCP smoke call
+reported `handoff.status=opened`, `kinematics_solved=true`, and the new native document's name.
+
 ## Architecture
 1. **Geometric Export**: Individual solids are isolated to local coordinates and written as STEP files into a temporary workspace.
 2. **Document Construction**: An isolated `freecadcmd` worker uses Qt's offscreen platform to build an `Assembly::AssemblyObject` and its joint group, including GUI metadata. The FreeCAD installation must include its GUI libraries and Qt offscreen plugin. No window or running FreeCAD RPC server is required.

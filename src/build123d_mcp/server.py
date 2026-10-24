@@ -769,6 +769,29 @@ def export_freecad_assembly(
     )
 
 
+@mcp.tool(annotations=_MUTATING)
+def send_to_freecad(
+    filename: str = "",
+    ground_part: str = "",
+    object_names: str = "*",
+    joints_json: str = "",
+    freecad_cmd: str = "",
+) -> str:
+    """Send the live build123d assembly straight to the running FreeCAD GUI with native mates.
+    Exports a new FCStd snapshot, checks the native solver, and opens it via the local FreeCAD MCP
+    addon RPC server. The addon must be running (port 9875; FREECAD_MCP_PORT/TOKEN supported).
+    Select registered parts with object_names. Native build123d joint connections are discovered
+    automatically; use joints_json for additional mate types, especially Belt/Gears with positive
+    radius1/radius2 in mm and local shaft placements. Geometry alone cannot determine mates.
+    A blank filename creates a unique freecad-transfers/assembly-*.FCStd file. Existing files and
+    open documents are never replaced, closed or reloaded. Returns the opened document name.
+    If GUI delivery is unconfirmed the completed export is kept; inspect FreeCAD before retrying.
+    """
+    from build123d_mcp.freecad_handoff import send_to_freecad as send
+
+    return send(_resolve_session(), filename, ground_part, object_names, joints_json, freecad_cmd)
+
+
 @mcp.tool(annotations=_READ_ONLY)
 @_drawing_deprecation
 def inspect_drawing(objects: str = "", svg_path: str = "") -> str:
