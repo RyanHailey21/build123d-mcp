@@ -73,6 +73,39 @@ def _server_version() -> str:
 
 mcp = MCPServer("build123d-mcp", instructions=_INSTRUCTIONS, version=_server_version())
 
+# Capture process provenance at startup rather than after an on-disk upgrade.
+from build123d_mcp.runtime_info import toolchain_status as _toolchain_status
+
+
+@mcp.tool(annotations=_READ_ONLY)
+def toolchain_status(expected_revision: str = "", probe_freecad: bool = False) -> dict:
+    """Report running versus installed revision, restart need and optional bounded FreeCAD RPC ping.
+    Does not load CAD, rebuild geometry, reconnect servers, or alter open documents.
+    """
+    return _toolchain_status(expected_revision, probe_freecad)
+
+
+@mcp.tool(annotations=_MUTATING)
+def prepare_assembly(spec_json: str = "@assembly_spec") -> str:
+    """Register rigid groups from cad-assembly/1 and return mate/export arguments and a counted BOM.
+    Default reads assembly_spec declared in the executed CAD source. Components reference registered
+    objects; instances declare unique IDs, group membership and optional pos/quaternion transforms.
+    Joint placements are in the common assembly frame. Source shapes are copied, never moved.
+    """
+    return _resolve_session().prepare_assembly(spec_json)
+
+
+@mcp.tool(annotations=_MUTATING)
+def build_project(manifest_path: str) -> str:
+    """Build up to 32 selected cad-build/1 jobs through existing execute/export tools.
+    Reuses receipts only when inputs and exported file hashes match; stops on first failure.
+    Manifest paths are relative to its directory. Outputs belong in disposable build folders.
+    No stress, collision, or historical audits are launched. Current CAD session becomes the last
+    rebuilt model; use an isolated session if preserving an interactive model is required.
+    """
+    from build123d_mcp.project_build import build_project as build
+    return build(_resolve_session(), manifest_path)
+
 
 @mcp.tool(annotations=_READ_ONLY)
 def cad_capabilities() -> dict:
@@ -84,7 +117,9 @@ def cad_capabilities() -> dict:
             "evidence_schema": "cad-evidence/1",
             "allowed_file_roots": _allowed_roots(),
             "operations": {"execute_file": "available", "export_bundle": "available",
-                           "verify_saved_geometry": "available"},
+                           "verify_saved_geometry": "available", "prepare_assembly": "available",
+                           "build_project": "available", "send_to_freecad": "available",
+                           "toolchain_status": "available"},
             "limits": {"isolated_timeout_seconds": 60},
             "scope": "Installed capabilities; not a runtime geometry or dependency health check"}
 
@@ -776,10 +811,13 @@ def send_to_freecad(
     object_names: str = "*",
     joints_json: str = "",
     freecad_cmd: str = "",
+    assembly_json: str = "",
 ) -> str:
     """Send the live build123d assembly straight to the running FreeCAD GUI with native mates.
     Exports a new FCStd snapshot, checks the native solver, and opens it via the local FreeCAD MCP
     addon RPC server. The addon must be running (port 9875; FREECAD_MCP_PORT/TOKEN supported).
+    Set assembly_json="@assembly_spec" to use the source-declared cad-assembly/1 registry; it
+    supplies rigid groups, transforms, mates and BOM without name-based reconstruction.
     Select registered parts with object_names. Native build123d joint connections are discovered
     automatically; use joints_json for additional mate types, especially Belt/Gears with positive
     radius1/radius2 in mm and local shaft placements. Geometry alone cannot determine mates.
@@ -789,7 +827,7 @@ def send_to_freecad(
     """
     from build123d_mcp.freecad_handoff import send_to_freecad as send
 
-    return send(_resolve_session(), filename, ground_part, object_names, joints_json, freecad_cmd)
+    return send(_resolve_session(), filename, ground_part, object_names, joints_json, freecad_cmd, assembly_json)
 
 
 @mcp.tool(annotations=_READ_ONLY)

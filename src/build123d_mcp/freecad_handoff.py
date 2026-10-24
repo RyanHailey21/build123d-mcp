@@ -70,6 +70,7 @@ def send_to_freecad(
     object_names: str = "*",
     joints_json: str = "",
     freecad_cmd: str = "",
+    assembly_json: str = "",
 ) -> str:
     """Solve/export a new snapshot and open it through the FreeCAD addon GUI queue."""
     output = safe_output_path(
@@ -91,11 +92,19 @@ def send_to_freecad(
             f"Connection error: {type(exc).__name__}"
         ) from None
 
+    registry = None
+    if assembly_json:
+        registry = json.loads(session.prepare_assembly(assembly_json))
+        object_names = registry["object_names"]
+        ground_part = registry["ground_part"]
+        joints_json = json.dumps(registry["joints"])
     result = json.loads(
         session.export_freecad_assembly(
             output, ground_part, object_names, joints_json, freecad_cmd, True
         )
     )
+    if registry is not None:
+        result["assembly_registry"] = registry
     if result.get("status") != "success":
         result["handoff"] = {"status": "not_attempted", "reason": "No completed FCStd export"}
         return json.dumps(result)

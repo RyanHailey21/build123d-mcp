@@ -104,3 +104,23 @@ def test_filename_is_data_and_existing_documents_untouched(tmp_path):
     assert "reloadDocument" not in code
     assert "save(" not in code
     assert "App.closeDocument(received.Name)" in code  # only malformed new import
+
+
+def test_source_registry_supplies_mates_and_bom(tmp_path, monkeypatch):
+    path = tmp_path / "new.FCStd"
+    session = exporter(path)
+    fixture_rpc(monkeypatch)
+    registry = {
+        "object_names": "asm_Demo_Base,asm_Demo_Arm",
+        "ground_part": "asm_Demo_Base",
+        "joints": [],
+        "bom": [{"id": "bolt", "quantity": 2}],
+    }
+    session.prepare_assembly.return_value = json.dumps(registry)
+    result = json.loads(handoff.send_to_freecad(session, str(path), assembly_json="@assembly_spec"))
+    assert result["assembly_registry"]["bom"][0]["quantity"] == 2
+    assert session.export_freecad_assembly.call_args.args[1:4] == (
+        "asm_Demo_Base",
+        "asm_Demo_Base,asm_Demo_Arm",
+        "[]",
+    )

@@ -947,6 +947,10 @@ class WorkerSession:
     ) -> str:
         raise NotImplementedError
 
+    @_op(_tool(f"{_T}.assembly_registry:prepare_assembly"), _export_budget)
+    def prepare_assembly(self, spec_json: str = "@assembly_spec") -> str:
+        raise NotImplementedError
+
     # measure/validate/clearance/cross_sections isolate a large shape's native
     # analysis in a bounded subprocess (tools/_bounded.py, #360). That subprocess is
     # bounded by op_budget() == _export_budget, so the parent watchdog must be the
