@@ -757,8 +757,13 @@ def export_freecad_assembly(
     """Export build123d parts and kinematic joints to a FreeCAD 1.1 Assembly document (.FCStd).
     Exports component solids as individual STEP files and assembles them headlessly into FreeCAD 1.1's
     native Assembly workbench container with true kinematic joints (Revolute, Fixed, Slider, Cylindrical,
-    Ball), base grounding, and constraint solving. Joints are auto-discovered from build123d shape joints
-    and connect_to relationships, or specified explicitly via joints_json."""
+    Ball, Belt, Gears), base grounding, and checked constraint solving. The saved file includes visible
+    parts and native joint view providers; no GUI repair script is needed. Original part placements
+    are preserved without mutating the session. Joints are auto-discovered from build123d shape joints
+    and connect_to relationships, or specified explicitly via joints_json (an empty array disables
+    discovery). Belt/Gears require positive radius1 and radius2 in mm, with placement1/placement2
+    defining the shaft axes in each part's LOCAL coordinates. Belt is same-direction, Gears opposite.
+    Uses an isolated offscreen FreeCAD process; does not modify open GUI documents."""
     return _resolve_session().export_freecad_assembly(
         filename, ground_part, object_names, joints_json, freecad_cmd, solve
     )

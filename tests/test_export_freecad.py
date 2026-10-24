@@ -207,3 +207,140 @@ def test_export_freecad_error_cases(session, tmp_path):
             str(tmp_path / "test.FCStd"),
             joints_json=json.dumps(invalid_joints),
         )
+
+
+def test_explicit_belt_parameters_and_empty_override():
+    from build123d_mcp.tools.export_freecad import _extract_assembly_joints
+
+    parts = {"a": object(), "b": object()}
+    spec = {"type": "Belt", "part1": "a", "part2": "b", "radius1": 10, "radius2": 80}
+    assert _extract_assembly_joints(parts, [spec])[0]["radius2"] == 80
+    assert _extract_assembly_joints(parts, []) == []
+    for bad in (None, 0, -2, float("nan"), float("inf"), True):
+        with pytest.raises(ValueError, match="positive finite radius"):
+            _extract_assembly_joints(parts, [{**spec, "radius1": bad}])
+
+
+def test_failed_worker_does_not_replace_existing_file(session, tmp_path, monkeypatch):
+    import build123d_mcp.tools.export_freecad as mod
+
+    session.execute("show(Box(2,2,2), 'base')")
+    target = tmp_path / "existing.FCStd"
+    target.write_bytes(b"original document")
+    monkeypatch.setattr(mod, "find_freecad_cmd", lambda custom="": "freecadcmd")
+    # FreeCADCmd can exit 0 after a Python exception; an old output is not success.
+    monkeypatch.setattr(
+        mod.subprocess,
+        "run",
+        lambda *a, **kw: subprocess.CompletedProcess(a, 0, "", "solver failed"),
+    )
+    with pytest.raises(RuntimeError, match="solver failed"):
+        export_freecad_assembly(session, str(target))
+    assert target.read_bytes() == b"original document"
+
+
+def test_belt_export_preserves_pose_and_gui_metadata(session, tmp_path, monkeypatch):
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    fc_bin = find_freecad_cmd()
+    if not fc_bin:
+        pytest.skip("FreeCAD 1.1 not installed")
+    monkeypatch.chdir(tmp_path)
+    session.execute("""
+show(Pos(10,20,30)*Box(100,20,5), 'base')
+show(Pos(10,20,40)*Cylinder(5,10), 'driver')
+show(Pos(60,20,40)*Cylinder(10,10), 'driven')
+""")
+    before = {n: _location_to_pos_and_quat(s.location) for n, s in session.objects.items()}
+    identity = {"pos": [0, 0, 0], "quat": [0, 0, 0, 1]}
+    joints = [
+        {
+            "name": "DriverPivot",
+            "type": "Revolute",
+            "part1": "base",
+            "part2": "driver",
+            "placement1": {"pos": [0, 0, 10], "quat": [0, 0, 0, 1]},
+            "placement2": identity,
+        },
+        {
+            "name": "DrivenPivot",
+            "type": "Revolute",
+            "part1": "base",
+            "part2": "driven",
+            "placement1": {"pos": [50, 0, 10], "quat": [0, 0, 0, 1]},
+            "placement2": identity,
+        },
+        {
+            "name": "DriveBelt",
+            "type": "Belt",
+            "part1": "driver",
+            "part2": "driven",
+            "placement1": identity,
+            "placement2": identity,
+            "radius1": 5,
+            "radius2": 10,
+        },
+    ]
+    target = tmp_path / "belt.FCStd"
+    result = json.loads(
+        export_freecad_assembly(
+            session, str(target), ground_part="base", joints_json=json.dumps(joints)
+        )
+    )
+    assert result["kinematics_solved"] and result["gui_ready"]
+    assert before == {n: _location_to_pos_and_quat(s.location) for n, s in session.objects.items()}
+    with zipfile.ZipFile(target) as z:
+        gui = ET.fromstring(z.read("GuiDocument.xml"))
+        for n in ("Assembly", "base", "driver", "driven"):
+            vp = gui.find(f".//ViewProvider[@name='{n}']")
+            assert vp is not None
+            assert vp.find(".//Property[@name='Visibility']/Bool").get("value") == "true"
+    # Reopen in a separate process; test real stored radii/placements and solve.
+    script = tmp_path / "check_belt.py"
+    script.write_text(
+        f"""
+import FreeCAD as App
+doc=App.openDocument({str(target)!r})
+assert doc.DriveBelt.JointType == 'Belt'
+assert doc.DriveBelt.Distance.Value == 5
+assert doc.DriveBelt.Distance2.Value == 10
+assert (doc.base.Placement.Base-App.Vector(10,20,30)).Length < 1e-7
+assert (doc.driven.Placement.Base-App.Vector(60,20,40)).Length < 1e-7
+assert doc.Assembly.solve() == 0
+print("BELT_REOPEN_OK")
+""",
+        encoding="utf-8",
+    )
+    check = subprocess.run(
+        [fc_bin, str(script)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=60,
+    )
+    assert "BELT_REOPEN_OK" in check.stdout, check.stdout + check.stderr[-3000:]
+
+
+def test_solver_failure_leaves_destination_intact(session, tmp_path, monkeypatch):
+    if not find_freecad_cmd():
+        pytest.skip("FreeCAD 1.1 not installed")
+    monkeypatch.chdir(tmp_path)
+    session.execute("show(Box(4,4,4), 'base'); show(Box(2,2,2), 'arm')")
+    target = tmp_path / "keep.FCStd"
+    target.write_bytes(b"keep existing design")
+    import build123d_mcp.tools.export_freecad as mod
+
+    generate = mod._generate_freecad_assembly_script
+
+    def failed_solver(*args, **kwargs):
+        return generate(*args, **kwargs).replace(
+            'result = asm.solve() if data["solve"] else None', "result = -3"
+        )
+
+    monkeypatch.setattr(mod, "_generate_freecad_assembly_script", failed_solver)
+    joints = [{"name": "FixedA", "type": "Fixed", "part1": "base", "part2": "arm"}]
+    with pytest.raises(RuntimeError, match="solve failed"):
+        export_freecad_assembly(session, str(target), joints_json=json.dumps(joints))
+    assert target.read_bytes() == b"keep existing design"

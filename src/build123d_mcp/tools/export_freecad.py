@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import copy
 import json
+import math
 import os
 import shutil
 import subprocess
 import tempfile
+import time
 from typing import Any
 
 from build123d import Location
@@ -127,9 +130,11 @@ def _extract_assembly_joints(
     target_objects: dict[str, Any], explicit_joints: list[dict[str, Any]] | None = None
 ) -> list[dict[str, Any]]:
     """Extract joint definitions and local coordinate placements from shapes or explicit spec."""
-    if explicit_joints:
+    if explicit_joints is not None:
         validated: list[dict[str, Any]] = []
         for i, j in enumerate(explicit_joints):
+            if not isinstance(j, dict):
+                raise ValueError("Each joint must be a JSON object")
             name = j.get("name") or f"Joint_{i + 1}"
             jtype = j.get("type", "Fixed")
             if jtype not in VALID_FREECAD_JOINTS:
@@ -145,6 +150,16 @@ def _extract_assembly_joints(
 
             plac1 = j.get("placement1", {"pos": [0.0, 0.0, 0.0], "quat": [0.0, 0.0, 0.0, 1.0]})
             plac2 = j.get("placement2", {"pos": [0.0, 0.0, 0.0], "quat": [0.0, 0.0, 0.0, 1.0]})
+            if jtype in ("Belt", "Gears"):
+                for field in ("radius1", "radius2"):
+                    value = j.get(field)
+                    if (
+                        isinstance(value, bool)
+                        or not isinstance(value, (int, float))
+                        or not math.isfinite(value)
+                        or value <= 0
+                    ):
+                        raise ValueError(f"Joint '{name}' requires positive finite {field} in mm")
             validated.append(
                 {
                     "name": name,
@@ -157,6 +172,10 @@ def _extract_assembly_joints(
                     "angle_max": j.get("angle_max"),
                     "length_min": j.get("length_min"),
                     "length_max": j.get("length_max"),
+                    "radius1": j.get("radius1"),
+                    "radius2": j.get("radius2"),
+                    "distance": j.get("distance"),
+                    "angle": j.get("angle"),
                 }
             )
         return validated
@@ -234,119 +253,118 @@ def _generate_freecad_assembly_script(
     ground_part: str,
     output_fcstd: str,
     solve: bool,
+    placements: dict[str, Any] | None = None,
 ) -> str:
-    """Generate the headless FreeCAD 1.1 Python assembly script."""
-    lines: list[str] = [
-        "# Auto-generated FreeCAD 1.1 Assembly script by build123d-mcp",
-        "import sys, os",
-        "import FreeCAD as App",
-        "import Part",
-        "import JointObject, UtilsAssembly",
-        "",
-        f'doc = App.newDocument("{doc_name}")',
-        'asm = doc.addObject("Assembly::AssemblyObject", "Assembly")',
-        "parts = {}",
-        "",
-    ]
+    """Create a self-contained worker with GUI metadata but no visible window.
 
-    # Import STEP parts
-    for part_name, step_path in parts_step.items():
-        norm_step = os.path.abspath(step_path).replace("\\", "/")
-        lines.extend(
-            [
-                f"# Part: {part_name}",
-                "shape = Part.Shape()",
-                f'shape.read(r"{norm_step}")',
-                f'feat = doc.addObject("Part::Feature", "{part_name}")',
-                "feat.Shape = shape",
-                f'feat.Label = "{part_name}"',
-                "asm.addObject(feat)",
-                f'parts["{part_name}"] = feat',
-                "",
-            ]
-        )
-
-    lines.append("joint_group = UtilsAssembly.getJointGroup(asm)")
-
-    # Ground part
-    if ground_part in parts_step:
-        lines.extend(
-            [
-                f"# Ground: {ground_part}",
-                'ground = joint_group.newObject("App::FeaturePython", "GroundedJoint")',
-                f'JointObject.GroundedJoint(ground, parts["{ground_part}"])',
-                f'ground.Label = "Ground_{ground_part}"',
-                "",
-            ]
-        )
-
-    # Kinematic Joints
-    for i, j in enumerate(joints):
-        jname = j["name"]
-        jtype = j["type"]
-        p1 = j["part1"]
-        p2 = j["part2"]
-        plac1 = j["placement1"]
-        plac2 = j["placement2"]
-
-        lines.extend(
-            [
-                f"# Joint: {jname} ({jtype}) between {p1} and {p2}",
-                f'joint = joint_group.newObject("App::FeaturePython", "{jname}")',
-                f'JointObject.Joint(joint, JointObject.JointTypes.index("{jtype}"))',
-                f'joint.Label = "{jname}"',
-                f'joint.Reference1 = (parts["{p1}"], ("", ""))',
-                "joint.Detach1 = True",
-                (
-                    f"joint.Placement1 = App.Placement("
-                    f"App.Vector({plac1['pos'][0]}, {plac1['pos'][1]}, {plac1['pos'][2]}), "
-                    f"App.Rotation({plac1['quat'][0]}, {plac1['quat'][1]}, {plac1['quat'][2]}, {plac1['quat'][3]}))"
-                ),
-                f'joint.Reference2 = (parts["{p2}"], ("", ""))',
-                "joint.Detach2 = True",
-                (
-                    f"joint.Placement2 = App.Placement("
-                    f"App.Vector({plac2['pos'][0]}, {plac2['pos'][1]}, {plac2['pos'][2]}), "
-                    f"App.Rotation({plac2['quat'][0]}, {plac2['quat'][1]}, {plac2['quat'][2]}, {plac2['quat'][3]}))"
-                ),
-            ]
-        )
-
-        if j.get("angle_min") is not None and j.get("angle_max") is not None:
-            lines.extend(
-                [
-                    "joint.EnableAngleMin = True",
-                    f"joint.AngleMin = {j['angle_min']}",
-                    "joint.EnableAngleMax = True",
-                    f"joint.AngleMax = {j['angle_max']}",
-                ]
-            )
-
-        if j.get("length_min") is not None and j.get("length_max") is not None:
-            lines.extend(
-                [
-                    "joint.EnableLengthMin = True",
-                    f"joint.LengthMin = {j['length_min']}",
-                    "joint.EnableLengthMax = True",
-                    f"joint.LengthMax = {j['length_max']}",
-                ]
-            )
-
-        lines.append("")
-
-    norm_fcstd = os.path.abspath(output_fcstd).replace("\\", "/")
-    lines.extend(
-        [
-            "doc.recompute()",
-            "if " + ("True" if solve else "False") + ":",
-            "    asm.solve()",
-            f'doc.saveAs(r"{norm_fcstd}")',
-            "App.closeDocument(doc.Name)",
-            'print("FREECAD_ASSEMBLY_EXPORT_OK")',
-        ]
+    Import native joint proxies only AFTER GuiUp is set, otherwise their GUI
+    callbacks are partially initialized and fail when the file is reopened.
+    JSON is data, never interpolated Python code or filesystem names.
+    """
+    payload = json.dumps(
+        {
+            "name": doc_name,
+            "parts": parts_step,
+            "joints": joints,
+            "ground": ground_part,
+            "output": output_fcstd,
+            "solve": solve,
+            "placements": placements or {},
+        },
+        allow_nan=False,
     )
-
-    return "\n".join(lines) + "\n"
+    return (
+        "data = __import__('json').loads("
+        + repr(payload)
+        + ")\n"
+        + r"""
+import sys, os, json
+import FreeCAD as App
+import Part
+# GUI metadata runs in a fresh process: do not reuse proxies imported with GuiUp=0.
+if os.environ.get("BUILD123D_FREECAD_GUI_ONLY") == "1":
+    import FreeCADGui as Gui
+    Gui.showMainWindow()
+    Gui.getMainWindow().hide()
+    sys.path.insert(0, App.getHomePath())
+    sys.path.insert(0, os.path.join(App.getHomePath(), "Mod", "Assembly"))
+    import JointObject, UtilsAssembly
+    doc = App.openDocument(data["output"])
+    asm = doc.getObject("Assembly")
+    asm.Visibility = True
+    for obj in asm.Group:
+        if obj.TypeId == "Part::Feature":
+            obj.Visibility = True
+    for joint in UtilsAssembly.getJointGroup(asm).Group:
+        if hasattr(joint, "JointType"):
+            JointObject.ViewProviderJoint(joint.ViewObject)
+            if not hasattr(joint.ViewObject.Proxy, "switch_JCS1"):
+                joint.ViewObject.Proxy.attach(joint.ViewObject)
+            joint.Visibility = False
+        elif hasattr(joint, "ObjectToGround"):
+            JointObject.ViewProviderGroundedJoint(joint.ViewObject)
+    doc.recompute()
+    Gui.getDocument(doc.Name).activeView().viewAxonometric()
+    Gui.getDocument(doc.Name).activeView().fitAll()
+    doc.save()
+    App.closeDocument(doc.Name)
+    print("FREECAD_ASSEMBLY_EXPORT_OK")
+    sys.exit(0)
+sys.path.insert(0, App.getHomePath())
+sys.path.insert(0, os.path.join(App.getHomePath(), "Mod", "Assembly"))
+import JointObject, UtilsAssembly, Preferences
+prefs = Preferences.preferences()
+previous_auto_solve = prefs.GetBool("SolveInJointCreation", True)
+prefs.SetBool("SolveInJointCreation", False)
+def placement(spec):
+    return App.Placement(App.Vector(*spec["pos"]), App.Rotation(*spec["quat"]))
+doc = App.newDocument(data["name"])
+try:
+    asm = doc.addObject("Assembly::AssemblyObject", "Assembly")
+    parts = {}
+    for name, path in data["parts"].items():
+        shape = Part.Shape()
+        shape.read(path)
+        feat = doc.addObject("Part::Feature", name)
+        feat.Label = name
+        feat.Shape = shape
+        asm.addObject(feat)
+        if name in data["placements"]:
+            feat.Placement = placement(data["placements"][name])
+        parts[name] = feat
+    joint_group = UtilsAssembly.getJointGroup(asm)
+    ground = joint_group.newObject("App::FeaturePython", "GroundedJoint")
+    JointObject.GroundedJoint(ground, parts[data["ground"]])
+    ground.Label = "Ground_" + data["ground"]
+    for spec in data["joints"]:
+        joint = joint_group.newObject("App::FeaturePython", spec["name"])
+        JointObject.Joint(joint, JointObject.JointTypes.index(spec["type"]))
+        joint.Label = spec["name"]
+        joint.Reference1 = (parts[spec["part1"]], ("", ""))
+        joint.Reference2 = (parts[spec["part2"]], ("", ""))
+        joint.Detach1 = joint.Detach2 = True
+        joint.Placement1 = placement(spec["placement1"])
+        joint.Placement2 = placement(spec["placement2"])
+        for key, prop in (("angle_min","AngleMin"), ("angle_max","AngleMax"),
+                          ("length_min","LengthMin"), ("length_max","LengthMax")):
+            if spec.get(key) is not None:
+                setattr(joint, "Enable" + prop, True)
+                setattr(joint, prop, spec[key])
+        for key, prop in (("distance","Distance"), ("angle","Angle"),
+                          ("radius1","Distance"), ("radius2","Distance2")):
+            if spec.get(key) is not None:
+                setattr(joint, prop, spec[key])
+    doc.recompute()
+    result = asm.solve() if data["solve"] else None
+    if result not in (None, 0):
+        raise RuntimeError("FreeCAD assembly solve failed with code " + str(result))
+    doc.saveAs(data["output"])
+    print("FREECAD_ASSEMBLY_BUILD_OK")
+finally:
+    prefs.SetBool("SolveInJointCreation", previous_auto_solve)
+    App.closeDocument(doc.Name)
+"""
+    )
 
 
 def export_freecad_assembly(
@@ -418,10 +436,13 @@ def export_freecad_assembly(
     temp_dir = tempfile.mkdtemp(prefix="freecad_assembly_")
     try:
         parts_step: dict[str, str] = {}
-        for name, shape in target_objects.items():
-            step_file = os.path.join(temp_dir, f"{name}.step")
+        placements: dict[str, Any] = {}
+        for index, (name, shape) in enumerate(target_objects.items()):
+            step_file = os.path.join(temp_dir, f"part_{index}.step")
+            pos, quat = _location_to_pos_and_quat(shape.location)
+            placements[name] = {"pos": pos, "quat": quat}
             # Clear location to export intrinsic local geometry
-            local_shape = shape.locate(Location()) if hasattr(shape, "locate") else shape
+            local_shape = copy.deepcopy(shape).locate(Location())
             _write_step(local_shape, step_file)
             parts_step[name] = step_file
 
@@ -431,8 +452,9 @@ def export_freecad_assembly(
             parts_step=parts_step,
             joints=joints,
             ground_part=determined_ground,
-            output_fcstd=abs_output,
+            output_fcstd=os.path.join(temp_dir, "result.FCStd"),
             solve=solve,
+            placements=placements,
         )
 
         script_path = os.path.join(temp_dir, "build_assembly.py")
@@ -446,7 +468,7 @@ def export_freecad_assembly(
             os.makedirs(bundle_dir, exist_ok=True)
             saved_step_files: dict[str, str] = {}
             for name, step_p in parts_step.items():
-                dest_step = os.path.join(bundle_dir, f"{name}.step")
+                dest_step = os.path.join(bundle_dir, os.path.basename(step_p))
                 shutil.copyfile(step_p, dest_step)
                 saved_step_files[name] = dest_step
 
@@ -458,6 +480,7 @@ def export_freecad_assembly(
                 ground_part=determined_ground,
                 output_fcstd=abs_output,
                 solve=solve,
+                placements=placements,
             )
             with open(dest_script, "w", encoding="utf-8") as f:
                 f.write(bundle_script)
@@ -479,18 +502,49 @@ def export_freecad_assembly(
 
         # FreeCAD executable found: run headlessly
         budget = max(30, int(op_budget(session)))
+        deadline = time.monotonic() + budget
         proc = subprocess.run(
             [fc_bin, script_path],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            env={**os.environ, "QT_QPA_PLATFORM": "offscreen", "BUILD123D_FREECAD_GUI_ONLY": "0"},
             timeout=budget,
             check=False,
         )
 
-        if proc.returncode != 0 or not os.path.isfile(abs_output):
+        staged_output = os.path.join(temp_dir, "result.FCStd")
+        if (
+            proc.returncode != 0
+            or "FREECAD_ASSEMBLY_BUILD_OK" not in proc.stdout
+            or not os.path.isfile(staged_output)
+        ):
             err_msg = proc.stderr.strip() or proc.stdout.strip() or f"exit code {proc.returncode}"
             raise RuntimeError(f"FreeCAD assembly creation failed: {err_msg}")
+        gui_proc = subprocess.run(
+            [fc_bin, script_path],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(1, deadline - time.monotonic()),
+            check=False,
+            env={**os.environ, "QT_QPA_PLATFORM": "offscreen", "BUILD123D_FREECAD_GUI_ONLY": "1"},
+        )
+        if gui_proc.returncode != 0 or "FREECAD_ASSEMBLY_EXPORT_OK" not in gui_proc.stdout:
+            err_msg = gui_proc.stderr.strip() or gui_proc.stdout.strip()
+            raise RuntimeError(f"FreeCAD assembly GUI metadata failed: {err_msg}")
 
+        # Publish only a successfully completed worker output.
+        with tempfile.NamedTemporaryFile(dir=os.path.dirname(abs_output), delete=False) as staging:
+            publish_path = staging.name
+        try:
+            shutil.copyfile(staged_output, publish_path)
+            os.replace(publish_path, abs_output)
+        finally:
+            if os.path.exists(publish_path):
+                os.unlink(publish_path)
         file_size = os.path.getsize(abs_output)
         return json.dumps(
             {
@@ -501,6 +555,7 @@ def export_freecad_assembly(
                 "grounded_part": determined_ground,
                 "joints": joints,
                 "kinematics_solved": solve,
+                "gui_ready": True,
                 "freecad_cmd": fc_bin,
             },
             indent=2,
